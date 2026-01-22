@@ -122,8 +122,7 @@ def update(dt):
             blink_start_t = None
     else:
         blink_value = 0.0
-
-    # Pupil size control - example: change with 'a' and 'd' keys
+ 
     pupil_size = max(0.1, min(pupil_size, 1.0)) 
 
 pyglet.clock.schedule_interval(update, 1 / 120.0)
@@ -151,7 +150,7 @@ def on_draw():
     program.use()
 
     t = time.time() - start
-    # program["iTime"] = t
+    program["iTime"] = t
     program["iResolution"] = (float(window.width), float(window.height))
     program["rAmp"] = zoom
     program["blink"] = float(blink_value)
