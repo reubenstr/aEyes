@@ -3,10 +3,11 @@
 in vec2 v_uv;
 out vec4 fragColor;
 
-uniform float iTime;
+//uniform float iTime;
 uniform vec2  iResolution;
 uniform float rAmp;
 uniform float blink;
+uniform float pupilSize;
 
 const mat2 m = mat2( 0.80,  0.60, -0.60,  0.80 );
 
@@ -80,7 +81,9 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float a = atan( p.y, p.x );
 
     // animate (controlled from Python)
-    r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0) * sin(4.0 * iTime);
+    //r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0) * sin(4.0 * iTime);
+    r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0);
+
 
     // iris (blue-green)
     vec3 col = vec3( 0.0, 0.3, 0.4 );
@@ -115,7 +118,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     col *= vec3(0.8 + 0.2*cos(r*a));
 
     // pupil
-    f = 1.0 - smoothstep( 0.2, 0.25, r );
+    f = 1.0 - smoothstep( 0.2 * pupilSize, 0.25 * pupilSize, r );
     col = mix( col, vec3(0.0), f );
 
     // crop

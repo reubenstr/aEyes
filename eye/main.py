@@ -82,6 +82,12 @@ blink_value = 0.0
 blink_start_t = None
 next_blink_t = 1.5
 
+# Pupil Size Control
+pupil_size = 1.0  # Initial value
+pupil_size_change = 0.01  # Rate of change
+
+zoom = 0.2
+
 def trigger_blink(now_t: float):
     global blink_start_t
     blink_start_t = now_t
@@ -102,6 +108,7 @@ def blink_envelope(t: float) -> float:
 
 def update(dt):
     global blink_value, blink_start_t, next_blink_t
+    global pupil_size, pupil_size_change
     now = time.time() - start
 
     if now >= next_blink_t:
@@ -116,17 +123,26 @@ def update(dt):
     else:
         blink_value = 0.0
 
+    # Pupil size control - example: change with 'a' and 'd' keys
+    pupil_size = max(0.1, min(pupil_size, 1.0)) 
+
 pyglet.clock.schedule_interval(update, 1 / 120.0)
 
 @window.event
 def on_key_press(symbol, modifiers):
+    global zoom
     if symbol == pyglet.window.key.SPACE:
         trigger_blink(time.time() - start)
     if symbol == pyglet.window.key.R:
         reload_shaders()
+    if symbol == pyglet.window.key.A:
+        zoom += 0.2
+    if symbol == pyglet.window.key.D:
+        zoom -= 0.2
 
 @window.event
 def on_draw():
+    global zoom
     window.clear()
 
     if program is None:
@@ -135,10 +151,11 @@ def on_draw():
     program.use()
 
     t = time.time() - start
-    program["iTime"] = t
+    # program["iTime"] = t
     program["iResolution"] = (float(window.width), float(window.height))
-    program["rAmp"] = 0.20
+    program["rAmp"] = zoom
     program["blink"] = float(blink_value)
+    program["pupilSize"] = pupil_size 
 
     gl.glBindVertexArray(vao)
     gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
