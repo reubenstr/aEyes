@@ -6,64 +6,46 @@ out vec4 fragColor;
 uniform float iTime;
 uniform vec2  iResolution;
 
-// Piglet controls
 uniform float blink;       // 0..1
 uniform float pupilSize;   // ~0.1..1.0
 uniform float rAmp;        // zoom control
 
-#define TAU 6.28318530718
+uniform sampler2D iChannel0;   // bound to unit 0
 
 float gTime;
 float flareUp;
 
-// ======================================================
-// Utility
+// ===== Performance knobs (still Pi-friendly) =====
+#define NOISE_SIZE 256.0
+#define STEPS      88
+#define TSTART     13.5
+#define TMAX       37.0
+#define STEP_MIN   0.16
+#define STEP_REL   0.010
+
+// ===== Look knobs (cheap brightness control) =====
+#define FIRE_GAIN   1.65   // <— boost flame density
+#define BASE_GAIN   1.25   // <— boost base “pupil haze” contribution
+#define EXPOSURE    2.85   // <— final exposure boost
+#define PUPIL_MIX  1  // <— less aggressive pupil darkening (0..1)
+
 float LinearStep(float a, float b, float x)
 {
     return clamp((x - a) / (b - a), 0.0, 1.0);
 }
 
-// ======================================================
-// Hash + procedural value noise (NO TEXTURES)
-
-float hash1(float n)
-{
-    return fract(sin(n) * 43758.5453123);
-}
-
-float hash3(vec3 p)
-{
-    return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
-}
-
-float Noise(vec3 x)
+float Noise(in vec3 x)
 {
     vec3 p = floor(x);
     vec3 f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
+    f = f*f*(3.0 - 2.0*f);
 
-    float n000 = hash3(p + vec3(0,0,0));
-    float n100 = hash3(p + vec3(1,0,0));
-    float n010 = hash3(p + vec3(0,1,0));
-    float n110 = hash3(p + vec3(1,1,0));
-    float n001 = hash3(p + vec3(0,0,1));
-    float n101 = hash3(p + vec3(1,0,1));
-    float n011 = hash3(p + vec3(0,1,1));
-    float n111 = hash3(p + vec3(1,1,1));
+    vec2 uv = (p.xy + vec2(37.0, 17.0) * p.z) + f.xy;
+    vec2 tuv = fract((uv + 0.5) / NOISE_SIZE);
 
-    float nx00 = mix(n000, n100, f.x);
-    float nx10 = mix(n010, n110, f.x);
-    float nx01 = mix(n001, n101, f.x);
-    float nx11 = mix(n011, n111, f.x);
-
-    float nxy0 = mix(nx00, nx10, f.y);
-    float nxy1 = mix(nx01, nx11, f.y);
-
-    return mix(nxy0, nxy1, f.z);
+    vec2 rg = textureLod(iChannel0, tuv, 0.0).yx;
+    return mix(rg.x, rg.y, f.z);
 }
-
-// ======================================================
-// Pupil shape
 
 float PupilShape(vec3 p, float r)
 {
@@ -82,78 +64,64 @@ float DE_Pupil(vec3 p)
     return d * max(1.0, abs(p.y * 2.5));
 }
 
-// ======================================================
-// Volumetric fire
-
 float DE_Fire(vec3 p)
 {
     p *= vec3(1.0, 1.0, 1.5);
     float len = length(p);
 
-    float ax = atan(p.y, p.x) * 10.0;
-    float ay = atan(p.y, p.z) * 10.0;
+    float ax = atan(p.y, p.x) * 7.0;
+    float ay = atan(p.y, p.z) * 7.0;
 
-    vec3 shape = vec3(len * 0.5 - gTime * 1.2, ax, ay) * 2.0;
+    vec3 shape = vec3(len * 0.5 - gTime * 1.15, ax, ay) * 1.8;
 
-    shape += 2.5 * (
-        Noise(p * 0.25) -
-        Noise(p * 0.5) * 0.5 +
-        Noise(p * 2.0) * 0.25
-    );
+    float turb = Noise(p * 0.30) - 0.55 * Noise(p * 1.10);
+    shape += 2.2 * turb;
 
-    float f = Noise(shape) * 6.0;
+    float f = Noise(shape) * 5.5;
 
     f += (LinearStep(7.3, 8.3 + flareUp, len) *
-          LinearStep(12.0 + flareUp * 2.0, 8.0, len)) * 3.0;
+          LinearStep(12.0 + flareUp * 2.0, 8.0, len)) * 2.6;
 
     p *= vec3(0.75, 1.2, 1.0);
     len = length(p);
-    f = mix(f, 0.0, LinearStep(12.5 + flareUp, 16.5 + flareUp, len));
+    f = mix(f, 0.0, LinearStep(12.2 + flareUp, 15.8 + flareUp, len));
 
     return f;
 }
 
-// ======================================================
 vec3 FlameColour(float f)
 {
-    f = f * f * (3.0 - 2.0 * f);
-    return min(vec3(f + 0.8, f * f * 1.4 + 0.05, f * f * f * 0.6) * f, 1.0);
+    f = f*f*(3.0 - 2.0*f);
+    return min(vec3(f + 0.8, f*f*1.4 + 0.05, f*f*f*0.6) * f, 1.0);
 }
-
-// ======================================================
-// Raymarch
 
 vec4 Raymarch(vec3 ro, vec3 rd, out float pupilAcc)
 {
     float sum = 0.0;
-    float t = 14.0;
+    float t = TSTART;
     pupilAcc = 0.0;
 
-    for (int i = 0; i < 190; i++)
+    for (int i = 0; i < STEPS; i++)
     {
-        if (t > 37.0) break;
+        if (t > TMAX) break;
 
         vec3 pos = ro + t * rd;
 
         float dP = DE_Pupil(pos);
 
-        pupilAcc += LinearStep(
-            0.02 + Noise(pos * 4.0 + gTime) * 0.3,
-            0.0,
-            dP
-        ) * 0.17;
+        // pupil accumulation (dark mask)
+        pupilAcc += LinearStep(0.03 + Noise(pos * 3.0 + gTime) * 0.22, 0.0, dP) * 0.16;
 
-        sum += LinearStep(1.3, 0.0, dP) * 0.014;
-        sum += max(DE_Fire(pos), 0.0) * 0.00162;
+        // Base “smoke” + fire, boosted
+        sum += LinearStep(1.25, 0.0, dP) * (0.012 * BASE_GAIN);
+        sum += max(DE_Fire(pos), 0.0) * (0.00145 * FIRE_GAIN);
 
-        t += max(0.1, t * 0.0057);
+        t += max(STEP_MIN, t * STEP_REL);
     }
 
-    return vec4(0.0, 0.0, 0.0, clamp(sum * sum * sum, 0.0, 1.0));
+    float dens = clamp(sum*sum*sum, 0.0, 1.0);
+    return vec4(0.0, 0.0, 0.0, dens);
 }
-
-// ======================================================
-// Blink mask
 
 float BlinkMask(vec2 p, float b)
 {
@@ -164,7 +132,6 @@ float BlinkMask(vec2 p, float b)
     return 1.0 - lid;
 }
 
-// ======================================================
 void main()
 {
     gTime   = iTime + 44.29;
@@ -182,7 +149,7 @@ void main()
     vec3 cu = normalize(cross(cw, cp));
     vec3 cv = cross(cu, cw);
 
-    float fov = max(0.2, rAmp);
+    float fov = 0.65 * max(0.25, rAmp);
     vec3 rd = normalize(p.x * cu + p.y * cv + fov * cw);
 
     float pupilAcc;
@@ -190,13 +157,17 @@ void main()
 
     vec3 col = vec3(0.0);
     col += FlameColour(rm.w);
-    col = mix(col, vec3(0.0), clamp(pupilAcc, 0.0, 1.0));
+
+    // less aggressive pupil darkening
+    col = mix(col, vec3(0.0), clamp(pupilAcc, 0.0, 1.0) * PUPIL_MIX);
 
     col *= BlinkMask(p, blink);
 
-    col = sqrt(col);
-    col = min(mix(vec3(length(col)), col, 1.22), 1.0);
-    col += col * 0.3;
+    // exposure + mild contrast (cheap)
+    col *= EXPOSURE;
+    col = sqrt(max(col, 0.0));
+    col = min(mix(vec3(length(col)), col, 1.20), 1.0);
+    col += col * 0.20;
 
     fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
