@@ -24,80 +24,7 @@ def build_program() -> ShaderProgram:
 
 window = pyglet.window.Window(800, 800, "Eye + Blink (file-based GLSL)", resizable=True)
 
-# ------------------------------------------------------------
-# Noise texture generation + upload (Shadertoy-style iChannel0)
-# ------------------------------------------------------------
-
-NOISE_SIZE = 256
-noise_tex = gl.GLuint(0)
-
-def _xorshift32(seed: int):
-    """Simple deterministic PRNG (fast, no numpy required)."""
-    x = seed & 0xFFFFFFFF
-    while True:
-        x ^= (x << 13) & 0xFFFFFFFF
-        x ^= (x >> 17) & 0xFFFFFFFF
-        x ^= (x << 5) & 0xFFFFFFFF
-        yield x
-
-def create_noise_texture_rgba8(size: int = 256, seed: int = 12345) -> int:
-    """
-    Creates a GL_TEXTURE_2D RGBA8 noise texture.
-    We'll fill RGBA with random-ish bytes; shader can read .yx like Shadertoy.
-    """
-    global noise_tex
-
-    # Create byte buffer: size*size pixels * 4 channels
-    gen = _xorshift32(seed)
-    data = bytearray(size * size * 4)
-    for i in range(0, len(data), 4):
-        r = next(gen) & 0xFF
-        g = (next(gen) >> 8) & 0xFF
-        b = (next(gen) >> 16) & 0xFF
-        a = 255
-        data[i + 0] = r
-        data[i + 1] = g
-        data[i + 2] = b
-        data[i + 3] = a
-
-    # Upload to GPU
-    tex = gl.GLuint(0)
-    gl.glGenTextures(1, ctypes.byref(tex))
-    gl.glBindTexture(gl.GL_TEXTURE_2D, tex)
-
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_NEAREST)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_NEAREST)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
-
-    # Ensure tight packing
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-
-    # Upload RGBA8
-    buf = (gl.GLubyte * len(data)).from_buffer(data)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA8,
-        size,
-        size,
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        buf
-    )
-
-    gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-    noise_tex = tex
-    return int(tex.value)
-
-# Create once (after window/context exists)
-create_noise_texture_rgba8(NOISE_SIZE, seed=1337)
-
-# ------------------------------------------------------------
 # Fullscreen quad
-# ------------------------------------------------------------
-
 quad = [
     -1.0, -1.0,
      1.0, -1.0,
@@ -114,7 +41,7 @@ gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
 data = (gl.GLfloat * len(quad))(*quad)
 gl.glBufferData(gl.GL_ARRAY_BUFFER, ctypes.sizeof(data), data, gl.GL_STATIC_DRAW)
 
-# VAO
+# VAO (we’ll recreate VAO attribute binding on reload, since location can change)
 vao = gl.GLuint(0)
 gl.glGenVertexArrays(1, ctypes.byref(vao))
 
@@ -156,8 +83,8 @@ blink_start_t = None
 next_blink_t = 1.5
 
 # Pupil Size Control
-pupil_size = 1.0
-pupil_size_change = 0.01
+pupil_size = 1.0  # Initial value
+pupil_size_change = 0.01  # Rate of change
 
 zoom = 0.2
 
@@ -195,8 +122,8 @@ def update(dt):
             blink_start_t = None
     else:
         blink_value = 0.0
-
-    pupil_size = max(0.1, min(pupil_size, 1.0))
+ 
+    pupil_size = max(0.1, min(pupil_size, 1.0)) 
 
 pyglet.clock.schedule_interval(update, 1 / 120.0)
 
@@ -220,10 +147,6 @@ def on_draw():
     if program is None:
         return
 
-    # Bind noise texture to unit 0 (even if shader doesn't use it, it's harmless)
-    gl.glActiveTexture(gl.GL_TEXTURE0)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, noise_tex)
-
     program.use()
 
     t = time.time() - start
@@ -231,19 +154,12 @@ def on_draw():
     program["iResolution"] = (float(window.width), float(window.height))
     program["rAmp"] = zoom
     program["blink"] = float(blink_value)
-    program["pupilSize"] = pupil_size
-
-    # Only set if the shader actually declares it
-    if "iChannel0" in program.uniforms:
-        program["iChannel0"] = 0
+    program["pupilSize"] = pupil_size 
 
     gl.glBindVertexArray(vao)
     gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
     gl.glBindVertexArray(0)
 
     program.stop()
-
-    # Unbind texture (optional hygiene)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
 
 pyglet.app.run()
