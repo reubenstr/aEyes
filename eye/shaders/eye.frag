@@ -1,4 +1,5 @@
-#version 150 core
+#version 300 es
+precision highp float;
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -21,8 +22,8 @@ float noise( in vec2 x )
 
     float n = i.x + i.y*57.0;
 
-    return mix(mix( hash1(n+ 0.0), hash1(n+ 1.0),f.x),
-               mix( hash1(n+57.0), hash1(n+58.0),f.x),f.y);
+    return mix(mix( hash1(n+ 0.0), hash1(n+ 1.0), f.x),
+               mix( hash1(n+57.0), hash1(n+58.0), f.x), f.y);
 }
 
 float fbm( vec2 p )
@@ -51,17 +52,11 @@ float eyelidMask(vec2 p, float blinkAmt)
     float top = 0.52 * openness;
     float bot = 0.42 * openness;
 
-    // p.x is expected to be normalized so edges are at |x|=1
-    float x = p.x; //clamp(abs(p.x), 0.0, 1.0);
+    float x = p.x;
     float x2 = x*x;
 
-    // Make edges hit 0 at x=1 (corners exactly at screen edges)
     float topEdge = top * (1.0 - x2);
     float botEdge = bot * (1.0 - x2);
-
-    // Optional: slightly different shaping for upper/lower lids
-    // topEdge = top * (1.0 - pow(x, 2.2));
-    // botEdge = bot * (1.0 - pow(x, 1.8));
 
     float inside = 1.0;
     inside *= smoothstep(topEdge + 0.010, topEdge - 0.010, p.y);
@@ -90,9 +85,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float a = atan( p.y, p.x );
 
     // animate (controlled from Python)
-    //r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0) * sin(4.0 * iTime);
     r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0);
-
 
     // iris (blue-green)
     vec3 col = vec3( 0.0, 0.3, 0.4 );
@@ -121,7 +114,6 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
         0.0, 0.6,
         length2( mat2(0.6,0.8,-0.8,0.6) * (p - vec2(0.3,0.5)) * vec2(1.0,2.0) )
     );
-    // col += vec3(1.0,0.9,0.9)*f*0.985;
 
     // shadow
     col *= vec3(0.8 + 0.2*cos(r*a));
@@ -136,7 +128,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
 
     // vignetting
     vec2 q = fragCoord / iResolution.xy;
-    col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.1);
+    col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.1);
 
     // Apply eyelid mask + a little lid shadow as it closes
     float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, blink));
@@ -146,6 +138,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
 }
 
 void main() {
+    // v_uv is 0..1, so scale to pixel coords
     vec2 fragCoord = v_uv * iResolution;
     mainImage(fragColor, fragCoord);
 }

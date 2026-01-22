@@ -4,6 +4,13 @@ import math
 from pathlib import Path
 
 import pyglet
+
+# ✅ IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
+pyglet.options.shadow_window = False
+pyglet.options["backend"] = "egl"   # best bet on Raspberry Pi (Wayland/Xwayland)
+# If "egl" isn't accepted by your pyglet version, try:
+# pyglet.options["backend"] = "gles3"
+
 from pyglet import gl
 from pyglet.graphics.shader import Shader, ShaderProgram
 
@@ -11,8 +18,10 @@ ROOT = Path(__file__).resolve().parent
 VERT_PATH = ROOT / "shaders" / "eye.vert"
 FRAG_PATH = ROOT / "shaders" / "eye.frag"
 
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
 
 def build_program() -> ShaderProgram:
     vert_src = read_text(VERT_PATH)
@@ -22,7 +31,22 @@ def build_program() -> ShaderProgram:
         Shader(frag_src, "fragment"),
     )
 
-window = pyglet.window.Window(800, 800, "Eye + Blink (file-based GLSL)", resizable=True)
+
+display = pyglet.display.get_display()
+screen = display.get_default_screen()
+config = screen.get_best_config()
+
+config.opengl_api = "gles"
+config.major_version = 3
+config.minor_version = 1   # Pi reports ES 3.1
+
+window = pyglet.window.Window(
+    800, 800,
+    "Eye + Blink (file-based GLSL)",
+    resizable=True,
+    config=config
+)
+
 
 # Fullscreen quad
 quad = [
@@ -41,12 +65,13 @@ gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
 data = (gl.GLfloat * len(quad))(*quad)
 gl.glBufferData(gl.GL_ARRAY_BUFFER, ctypes.sizeof(data), data, gl.GL_STATIC_DRAW)
 
-# VAO (we’ll recreate VAO attribute binding on reload, since location can change)
+# VAO
 vao = gl.GLuint(0)
 gl.glGenVertexArrays(1, ctypes.byref(vao))
 
 program = None
 last_compile_error = None
+
 
 def bind_geometry_to_program(prog: ShaderProgram):
     """Bind VBO -> VAO using the attribute location for this program."""
@@ -59,6 +84,7 @@ def bind_geometry_to_program(prog: ShaderProgram):
 
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
     gl.glBindVertexArray(0)
+
 
 def reload_shaders():
     """Compile/link shaders from files; keep running if compile fails."""
@@ -73,6 +99,7 @@ def reload_shaders():
         last_compile_error = str(e)
         print("❌ Shader compile/link failed:\n", last_compile_error)
 
+
 reload_shaders()
 
 start = time.time()
@@ -84,13 +111,14 @@ next_blink_t = 1.5
 
 # Pupil Size Control
 pupil_size = 1.0  # Initial value
-pupil_size_change = 0.01  # Rate of change
 
 zoom = 0.2
+
 
 def trigger_blink(now_t: float):
     global blink_start_t
     blink_start_t = now_t
+
 
 def blink_envelope(t: float) -> float:
     close_d = 0.06
@@ -106,9 +134,10 @@ def blink_envelope(t: float) -> float:
         return 1.0 - (x * x * (3 - 2 * x))
     return 0.0
 
+
 def update(dt):
     global blink_value, blink_start_t, next_blink_t
-    global pupil_size, pupil_size_change
+    global pupil_size
     now = time.time() - start
 
     if now >= next_blink_t:
@@ -122,10 +151,12 @@ def update(dt):
             blink_start_t = None
     else:
         blink_value = 0.0
- 
-    pupil_size = max(0.1, min(pupil_size, 1.0)) 
+
+    pupil_size = max(0.1, min(pupil_size, 1.0))
+
 
 pyglet.clock.schedule_interval(update, 1 / 120.0)
+
 
 @window.event
 def on_key_press(symbol, modifiers):
@@ -139,9 +170,9 @@ def on_key_press(symbol, modifiers):
     if symbol == pyglet.window.key.D:
         zoom -= 0.2
 
+
 @window.event
 def on_draw():
-    global zoom
     window.clear()
 
     if program is None:
@@ -154,12 +185,13 @@ def on_draw():
     program["iResolution"] = (float(window.width), float(window.height))
     program["rAmp"] = zoom
     program["blink"] = float(blink_value)
-    program["pupilSize"] = pupil_size 
+    program["pupilSize"] = pupil_size
 
     gl.glBindVertexArray(vao)
     gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
     gl.glBindVertexArray(0)
 
     program.stop()
+
 
 pyglet.app.run()
