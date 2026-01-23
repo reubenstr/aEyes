@@ -4,7 +4,6 @@ import math
 from eye import Eye, rgb255_srgb_to_linear
 
 class EyeController:
-    """Runs in a background thread. NO OpenGL calls here."""
     def __init__(self, app: Eye):
         self.app = app
         self._running = True
@@ -20,6 +19,8 @@ class EyeController:
             (255, 255, 0)]
         i = 0
         cycle_duration = 4.0
+
+        self.app.set_message("Waiting for controller to send data.")
 
         while self._running:
             t = time.time()
@@ -52,6 +53,7 @@ class EyeController:
 
             i += 1
             time.sleep(.1)  # controller tick
+            
 
 ###############################################################################
 # Helpers

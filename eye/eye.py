@@ -53,7 +53,7 @@ class Eye:
         self._vbo = gl.GLuint(0)
 
         self._start_time = time.time()
-
+  
         # blink scheduling state
         self._blink_start_t: float | None = None
         self._next_blink_t: float = 3.0
@@ -67,13 +67,27 @@ class Eye:
         config.minor_version = gles_minor
 
         self.window = pyglet.window.Window(
-            size[0], size[1],
-            '',
+            fullscreen=True,        
             resizable=True,
             config=config
         )
 
-        # attach handlers (no decorators needed)
+        self.pending_text = None
+        self.message_label = pyglet.text.Label(
+                "",
+                font_name="Monospace",
+                font_size=18,
+                x=self.window.width // 2,
+                y=self.window.height // 2,
+                width=self.window.width,
+                multiline=True,
+                anchor_x="center",
+                anchor_y="center",
+                align="center",  
+                color=(255, 80, 80, 255),
+            )
+      
+        # attach handlers (no decorators needed)     
         self.window.on_draw = self._on_draw
         self.window.on_key_press = self._on_key_press
 
@@ -98,10 +112,13 @@ class Eye:
         self.controls.cornea_color = rgb255_srgb_to_linear(r, g, b)
 
     def set_is_cat_eye(self, value: bool) -> None:
-        self.controls.cornea_color = value
+        self.controls.isCatEye = bool(value)
 
     def trigger_blink(self) -> None:
         self._blink_start_t = self.now()
+
+    def set_message(self, text: str) -> None:
+        self.pending_text = text
 
     def now(self) -> float:
         return time.time() - self._start_time
@@ -140,8 +157,7 @@ class Eye:
     def _bind_geometry_to_program(self, prog: ShaderProgram) -> None:
         gl.glBindVertexArray(self._vao)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._vbo)
-
-        # must match: in vec2 position;
+       
         pos_loc = prog.attributes["position"]["location"]
         gl.glEnableVertexAttribArray(pos_loc)
         gl.glVertexAttribPointer(pos_loc, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, ctypes.c_void_p(0))
@@ -210,14 +226,19 @@ class Eye:
 
     def _on_draw(self):
         self.window.clear()
+
+        if self.pending_text:
+            self.message_label.text = self.pending_text
+            self.message_label.draw()
+            return
+
         if self._program is None:
             return
 
         prog = self._program
         prog.use()
-
-        t = self.now()
-        prog["iTime"] = t
+        
+        prog["iTime"] = self.now()
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
         prog["rAmp"] = float(self.controls.rAmp)
         prog["blink"] = float(self.controls.blink)
@@ -225,8 +246,7 @@ class Eye:
         prog["irisColor"] = self.controls.iris_color
         prog["corneaColor"] = self.controls.cornea_color
         prog["isCatEye"] = self.controls.isCatEye
-        # prog["pupilSize"] = float(self.controls.pupil_size)  # if your shader uses it
-
+   
         gl.glBindVertexArray(self._vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         gl.glBindVertexArray(0)

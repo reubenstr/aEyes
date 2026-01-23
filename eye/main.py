@@ -6,7 +6,6 @@ from eye import Eye
 from eye_controller import EyeController
 
 
-
 if __name__ == "__main__":
     from pathlib import Path
     import threading
@@ -34,7 +33,6 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    # Ensure window close also stops controller
     app.window.on_close = shutdown
 
     try:
