@@ -1,5 +1,4 @@
-#version 300 es
-precision highp float;
+#version 150 core
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -7,8 +6,10 @@ out vec4 fragColor;
 uniform float iTime;
 uniform vec2  iResolution;
 uniform float rAmp;
+uniform vec3 irisColor;   
+uniform vec3 corneaColor;   
 uniform float blink;
-uniform float pupilSize;
+
 
 const mat2 m = mat2( 0.80,  0.60, -0.60,  0.80 );
 
@@ -22,8 +23,8 @@ float noise( in vec2 x )
 
     float n = i.x + i.y*57.0;
 
-    return mix(mix( hash1(n+ 0.0), hash1(n+ 1.0), f.x),
-               mix( hash1(n+57.0), hash1(n+58.0), f.x), f.y);
+    return mix(mix( hash1(n+ 0.0), hash1(n+ 1.0),f.x),
+               mix( hash1(n+57.0), hash1(n+58.0),f.x),f.y);
 }
 
 float fbm( vec2 p )
@@ -52,11 +53,17 @@ float eyelidMask(vec2 p, float blinkAmt)
     float top = 0.52 * openness;
     float bot = 0.42 * openness;
 
-    float x = p.x;
+    // p.x is expected to be normalized so edges are at |x|=1
+    float x = p.x; //clamp(abs(p.x), 0.0, 1.0);
     float x2 = x*x;
 
+    // Make edges hit 0 at x=1 (corners exactly at screen edges)
     float topEdge = top * (1.0 - x2);
     float botEdge = bot * (1.0 - x2);
+
+    // Optional: slightly different shaping for upper/lower lids
+    // topEdge = top * (1.0 - pow(x, 2.2));
+    // botEdge = bot * (1.0 - pow(x, 1.8));
 
     float inside = 1.0;
     inside *= smoothstep(topEdge + 0.010, topEdge - 0.010, p.y);
@@ -85,28 +92,34 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float a = atan( p.y, p.x );
 
     // animate (controlled from Python)
+    //r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0) * sin(4.0 * iTime);
     r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0);
 
+
     // iris (blue-green)
-    vec3 col = vec3( 0.0, 0.3, 0.4 );
+    //vec3 col = vec3( 0.0, 0.3, 0.4 );
+    //float f = fbm( 5.0*p );
+    //col = mix( col, vec3(0.2,0.5,0.4), f );
+    vec3 col = irisColor;
     float f = fbm( 5.0*p );
     col = mix( col, vec3(0.2,0.5,0.4), f );
 
-    // yellow towards center
-    col = mix( col, vec3(0.9,0.6,0.2), 1.0 - smoothstep(0.2,0.6,r) );
+    // shade around iris
+    //col = mix( col, vec3(0.9,0.6,0.2), 1.0 - smoothstep(0.2,0.6,r) );
+    col = mix( col, vec3(0.0,0.0,0.0), 1.0 - smoothstep(0.2,0.6,r) );
 
-    // darkening
+    // cornea splotching
     f = smoothstep( 0.4, 0.9, fbm( vec2(15.0*a,10.0*r) ) );
     col *= 1.0 - 0.5*f;
 
-    // distort
+    // cornea distorion (motion)
     a += 0.05*fbm( 20.0*p + vec2(iTime, iTime) );
 
     // cornea
     f = smoothstep( 0.3, 1.0, fbm( vec2(20.0*a,6.0*r) ) );
-    col = mix( col, vec3(1.0,1.0,1.0), f );
+    col = mix( col, corneaColor, f );
 
-    // edges
+    // darkening outer edges
     col *= 1.0 - 0.25*smoothstep( 0.6,0.8,r );
 
     // highlight
@@ -114,21 +127,34 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
         0.0, 0.6,
         length2( mat2(0.6,0.8,-0.8,0.6) * (p - vec2(0.3,0.5)) * vec2(1.0,2.0) )
     );
+    // col += vec3(1.0,0.9,0.9)*f*0.985;
 
     // shadow
     col *= vec3(0.8 + 0.2*cos(r*a));
 
     // pupil
-    f = 1.0 - smoothstep( 0.2 * pupilSize, 0.25 * pupilSize, r );
-    col = mix( col, vec3(0.0), f );
+    float center = smoothstep(0.0, 0.4, 1.0 - r);
+    float pupilDilate = mix(1.0, 0.6, center * rAmp);
 
-    // crop
-    f = smoothstep( 0.79, 0.82, r );
-    col = mix( col, vec3(1.0), f );
+    vec2 pupilScale = vec2(0.5, 1.0);
+    vec2 u = abs(p / pupilScale);
+    float kx = 1.0; 
+    float ky = 2.0;
+    float pr = pow(pow(u.x, kx) + pow(u.y, ky), 1.0 / kx); 
+    float inner = 0.2  * pupilDilate;
+    float outer = 0.25 * pupilDilate;
+    f = 1.0 - smoothstep(inner, outer, pr);
+    col = mix(col, vec3(0.0), f);
+
+    // crop to circle with edge blur
+    float edge = 0.8;
+    float blur = 2.0 * fwidth(r); 
+    f = smoothstep(edge - blur, edge + blur, r);
+    col = mix(col, vec3(1.0), f);
 
     // vignetting
     vec2 q = fragCoord / iResolution.xy;
-    col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.1);
+    col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.1);
 
     // Apply eyelid mask + a little lid shadow as it closes
     float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, blink));
@@ -138,7 +164,6 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
 }
 
 void main() {
-    // v_uv is 0..1, so scale to pixel coords
     vec2 fragCoord = v_uv * iResolution;
     mainImage(fragColor, fragCoord);
 }

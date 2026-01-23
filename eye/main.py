@@ -41,7 +41,7 @@ config.major_version = 3
 config.minor_version = 1   # Pi reports ES 3.1
 
 window = pyglet.window.Window(
-    800, 800,
+    720, 720,
     "Eye + Blink (file-based GLSL)",
     resizable=True,
     config=config
@@ -107,12 +107,23 @@ start = time.time()
 # Blink controller
 blink_value = 0.0
 blink_start_t = None
-next_blink_t = 1.5
+next_blink_t = 3.0
 
 # Pupil Size Control
 pupil_size = 1.0  # Initial value
 
 zoom = 0.2
+
+rotation = 0
+
+def srgb_to_linear(c):
+    return c ** 2.2  # approximation
+
+def rgb255_srgb_to_linear(r, g, b):
+    return tuple(srgb_to_linear(x / 255.0) for x in (r, g, b))
+
+iris_color = rgb255_srgb_to_linear(0, 255, 0)
+cornea_color = rgb255_srgb_to_linear(255, 0, 0)
 
 
 def trigger_blink(now_t: float):
@@ -121,8 +132,8 @@ def trigger_blink(now_t: float):
 
 
 def blink_envelope(t: float) -> float:
-    close_d = 0.06
-    open_d = 0.10
+    close_d = 0.12
+    open_d = 0.20
     total = close_d + open_d
     if t < 0.0:
         return 0.0
@@ -161,6 +172,7 @@ pyglet.clock.schedule_interval(update, 1 / 120.0)
 @window.event
 def on_key_press(symbol, modifiers):
     global zoom
+    global rotation
     if symbol == pyglet.window.key.SPACE:
         trigger_blink(time.time() - start)
     if symbol == pyglet.window.key.R:
@@ -169,6 +181,10 @@ def on_key_press(symbol, modifiers):
         zoom += 0.2
     if symbol == pyglet.window.key.D:
         zoom -= 0.2
+    if symbol == pyglet.window.key.Q:
+        rotation += 1
+    if symbol == pyglet.window.key.W:
+        rotation -= 1
 
 
 @window.event
@@ -184,8 +200,11 @@ def on_draw():
     program["iTime"] = t
     program["iResolution"] = (float(window.width), float(window.height))
     program["rAmp"] = zoom
+    program["irisColor"] = iris_color 
+    program["corneaColor"] = cornea_color 
     program["blink"] = float(blink_value)
-    program["pupilSize"] = pupil_size
+    #program["pupilSize"] = pupil_size
+    program["rotation"] = float(rotation)
 
     gl.glBindVertexArray(vao)
     gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
