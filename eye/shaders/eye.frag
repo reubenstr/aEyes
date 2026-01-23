@@ -1,5 +1,12 @@
 #version 150 core
 
+/*
+    Original shader sourced from: https://www.shadertoy.com/view/lsfGRr
+    By: Beautypi
+
+    Heavily modified with color, pupil, motion additions and controls, etc.
+*/
+
 in vec2 v_uv;
 out vec4 fragColor;
 
@@ -9,11 +16,15 @@ uniform float rAmp;
 uniform vec3 irisColor;   
 uniform vec3 corneaColor;   
 uniform float blink;
+uniform bool isCatEye;
 
 
 const mat2 m = mat2( 0.80,  0.60, -0.60,  0.80 );
 
-float hash1( float n ) { return fract(sin(n)*43758.5453); }
+float hash1( float n ) 
+{ 
+    return fract(sin(n)*43758.5453);
+}
 
 float noise( in vec2 x )
 {
@@ -75,31 +86,21 @@ float eyelidMask(vec2 p, float blinkAmt)
 void mainImage( out vec4 outColor, in vec2 fragCoord )
 {
     vec2 p = (2.0*fragCoord - iResolution.xy) / iResolution.y;
+    float r = length(p) * (1.0 + rAmp * clamp(1.0 - length(p), 0.0, 1.0));
+    float a = atan( p.y, p.x );    
 
     // Apply eyelid opening (blink)
     float lid = eyelidMask(p, blink);
 
     // If fully closed, draw a subtle lash/crease line instead of pure white
-    if (lid < 0.02) {
+    if (lid < 0.05) {
         float crease = exp(-abs(p.y) * 180.0) * exp(-abs(p.x) * 3.0);
         vec3 lash = vec3(0.04, 0.03, 0.03) * (0.35 + 0.65 * crease);
         outColor = vec4(lash, 1.0);
         return;
-    }
+    }    
 
-    // polar coordinates
-    float r = length( p );
-    float a = atan( p.y, p.x );
-
-    // animate (controlled from Python)
-    //r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0) * sin(4.0 * iTime);
-    r *= 1.0 + rAmp * clamp(1.0 - r, 0.0, 1.0);
-
-
-    // iris (blue-green)
-    //vec3 col = vec3( 0.0, 0.3, 0.4 );
-    //float f = fbm( 5.0*p );
-    //col = mix( col, vec3(0.2,0.5,0.4), f );
+    // iris color
     vec3 col = irisColor;
     float f = fbm( 5.0*p );
     col = mix( col, vec3(0.2,0.5,0.4), f );
@@ -136,9 +137,10 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float center = smoothstep(0.0, 0.4, 1.0 - r);
     float pupilDilate = mix(1.0, 0.6, center * rAmp);
 
-    vec2 pupilScale = vec2(0.5, 1.0);
+
+    vec2 pupilScale = vec2(isCatEye ? 0.5 : 1.0, 1.0);
     vec2 u = abs(p / pupilScale);
-    float kx = 1.0; 
+    float kx = isCatEye ? 1.0 : 2.0; 
     float ky = 2.0;
     float pr = pow(pow(u.x, kx) + pow(u.y, ky), 1.0 / kx); 
     float inner = 0.2  * pupilDilate;
