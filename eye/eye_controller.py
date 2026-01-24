@@ -20,7 +20,9 @@ class EyeController:
         i = 0
         cycle_duration = 4.0
 
-        self.app.set_message("Waiting for controller to send data.")
+        # self.app.set_message("Waiting for controller to send data.")
+
+        self.app.set_is_cat_eye(True)
 
         while self._running:
             t = time.time()

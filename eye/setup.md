@@ -19,6 +19,7 @@ TEMP:
 
 export DISPLAY=:0
 export XAUTHORITY=/home/pi/.Xauthority
+python3 ./main.py
 
 
 

@@ -59,13 +59,18 @@ float length2( vec2 p )
 float eyelidMask(vec2 p, float blinkAmt)
 {
     float closed   = smoothstep(0.0, 1.0, blinkAmt);
-    float openness = mix(1.0, 0.02, closed);
+    float openSize = 1.0;
+    float openness = mix(openSize, 0.02, closed);
 
-    float top = 0.52 * openness;
-    float bot = 0.42 * openness;
+    //float top = 0.52 * openness;
+    //float bot = 0.42 * openness;
+    float top = openness;
+    float bot =  openness;
+
+    float cornerExtent = 1.0; // >1 pushes corners outward
 
     // p.x is expected to be normalized so edges are at |x|=1
-    float x = p.x; //clamp(abs(p.x), 0.0, 1.0);
+    float x = p.x / cornerExtent; //clamp(abs(p.x), 0.0, 1.0);
     float x2 = x*x;
 
     // Make edges hit 0 at x=1 (corners exactly at screen edges)
@@ -137,7 +142,6 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float center = smoothstep(0.0, 0.4, 1.0 - r);
     float pupilDilate = mix(1.0, 0.6, center * rAmp);
 
-
     vec2 pupilScale = vec2(isCatEye ? 0.5 : 1.0, 1.0);
     vec2 u = abs(p / pupilScale);
     float kx = isCatEye ? 1.0 : 2.0; 
@@ -148,11 +152,13 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     f = 1.0 - smoothstep(inner, outer, pr);
     col = mix(col, vec3(0.0), f);
 
-    // crop to circle with edge blur
+    // crop to circle with edge blur (sclera color)
     float edge = 0.8;
-    float blur = 2.0 * fwidth(r); 
+    float blur = 3.0 * fwidth(r); 
     f = smoothstep(edge - blur, edge + blur, r);
-    col = mix(col, vec3(1.0), f);
+    // vec3 scleraColor = vec3(0.2, 0.2, 0.2);
+    vec3 scleraColor = vec3(0.0, 0.0, 0.0);
+    col = mix(col, scleraColor, f);
 
     // vignetting
     vec2 q = fragCoord / iResolution.xy;
