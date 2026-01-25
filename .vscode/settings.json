@@ -1,4 +1,5 @@
 {
+  "python.defaultInterpreterPath": "/home/pi/aEyes/eye/.venv/bin/python",
   "files.associations": {
     "*.frag": "glsl",
     "*.vert": "glsl",
