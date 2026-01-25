@@ -1,0 +1,63 @@
+# KiCad project files to ignore
+
+# Backup and autosave
+*.bak
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.tmp
+*.autosave
+*.lck
+
+# Exported manufacturing files
+*.gbr
+*.gtl
+*.gbl
+*.gts
+*.gbs
+*.gto
+*.gbo
+*.drl
+*.pos
+*.zip
+
+# Simulation outputs
+*.raw
+*.log
+*.cir.out
+
+# 3D model cache
+*.step
+*.stp
+
+# KiCad user-specific files
+*.kicad_prl
+*.kicad_wks
+*.kicad_pcb-bak
+*.kicad_sch-bak
+
+# Netlist and BOM exports
+*.xml
+*.net
+*.csv
+
+# Autorouter files
+*.dsn
+*.ses
+
+# Gerber job files
+*.gbrjob
+
+# Cache and temp
+*-cache.lib
+*-rescue.lib
+*.cache
+*.tmp
+
+# Backups
+.zip
+
+# Python virtual environments (if using scripts)
+venv/
+__pycache__/
+*.pyc
+
