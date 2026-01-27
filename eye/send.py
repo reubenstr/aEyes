@@ -33,8 +33,6 @@ if __name__ == "__main__":
     print(f"Packet size: {len(packet)} bytes, data: {list(packet)}")
 
  
-    
-    # To send over serial:
     import serial
     ser = serial.Serial('/dev/ttyACM0', 115200)
     ser.write(packet)
