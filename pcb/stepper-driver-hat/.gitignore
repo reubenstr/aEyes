@@ -61,3 +61,11 @@ venv/
 __pycache__/
 *.pyc
 
+
+
+# Ignore the fp-info-cache directory inside driver/
+*/fp-info-cache/
+
+# Ignore the auto_saved_files directory at the repo root
+# (the leading slash anchors it to the root)
+*/auto_saved_files#/
