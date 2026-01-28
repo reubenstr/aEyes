@@ -3,22 +3,14 @@ import time
 import json  
 import math
 from dataclasses import dataclass, asdict
+from interfaces import ControlMessage
 from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to_linear
+
 
 SOCKET_ADDRESS = '*'
 SOCKET_PORT = 9000
 
 REFRESH_RATE_HZ = 60
-
-@dataclass
-class ControlMessage:
-    radius: float
-    rotation_deg: float
-    blink: float 
-    pupil_size: float 
-    iris_color: tuple[float, float, float]
-    cornea_color: tuple[float, float, float] 
-    is_cat_eye: bool
 
 class Controller:
     def __init__(self):
@@ -66,25 +58,29 @@ class Controller:
             r0, g0, b0 = palette[i0]
             r1, g1, b1 = palette[i1]
             r, g, b = lerp_rgb((r0, g0, b0), (r1, g1, b1), u)
-
-                  
-            iris_color = tuple([int(r), int(g), int(b)])
-            cornea_color = tuple([255 - int(r), 255-int(g), 255-int(b)])
-                  
+                
+               
             radius = 0.25 + 0.20 * math.sin(t * 0.8)          
             rotation_deg = 10.0 * math.sin(t * 0.3)
+            eye_lid_position = (math.sin(t) + 1) / 2           
+            iris_color = tuple([int(r), int(g), int(b)])
+            cornea_color = tuple([255 - int(r), 255-int(g), 255-int(b)])
+                        
+            messages = []
+            for i in range(6):
+                messages.append(
+                    ControlMessage(
+                        radius=radius,
+                        rotation_deg=rotation_deg + i * 10,
+                        eye_lid_position=eye_lid_position,                       
+                        iris_color=iris_color,
+                        cornea_color=cornea_color,
+                        is_cat_eye=False
+                    )
+                )
 
-            message = ControlMessage(
-                radius=radius,
-                rotation_deg=rotation_deg,
-                blink=False,
-                pupil_size=5.0,
-                iris_color=iris_color,
-                cornea_color=cornea_color,
-                is_cat_eye=False
-            )
-
-            message_str = json.dumps(asdict(message))
+            message_list = [asdict(m) for m in messages]
+            message_str = json.dumps(message_list)
             self.socket.send_string(message_str)
             print("Sent:", message_str)
                 

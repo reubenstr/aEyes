@@ -12,10 +12,11 @@ out vec4 fragColor;
 
 uniform float iTime;
 uniform vec2  iResolution;
-uniform float rAmp;
+uniform float radius;
+//uniform float pupilSize;
 uniform vec3 irisColor;   
 uniform vec3 corneaColor;   
-uniform float blink;
+uniform float eyeLidPosition; 
 uniform bool isCatEye;
 
 
@@ -91,11 +92,11 @@ float eyelidMask(vec2 p, float blinkAmt)
 void mainImage( out vec4 outColor, in vec2 fragCoord )
 {
     vec2 p = (2.0*fragCoord - iResolution.xy) / iResolution.y;
-    float r = length(p) * (1.0 + rAmp * clamp(1.0 - length(p), 0.0, 1.0));
+    float r = length(p) * (1.0 + radius * clamp(1.0 - length(p), 0.0, 1.0));
     float a = atan( p.y, p.x );    
 
     // Apply eyelid opening (blink)
-    float lid = eyelidMask(p, blink);
+    float lid = eyelidMask(p, eyeLidPosition);
 
     // If fully closed, draw a subtle lash/crease line instead of pure white
     if (lid < 0.05) {
@@ -140,7 +141,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
 
     // pupil
     float center = smoothstep(0.0, 0.4, 1.0 - r);
-    float pupilDilate = mix(1.0, 0.6, center * rAmp);
+    float pupilDilate = mix(1.0, 0.6, center * radius);
 
     vec2 pupilScale = vec2(isCatEye ? 0.5 : 1.0, 1.0);
     vec2 u = abs(p / pupilScale);
@@ -165,7 +166,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.1);
 
     // Apply eyelid mask + a little lid shadow as it closes
-    float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, blink));
+    float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, eyeLidPosition));
     col *= mix(1.0 - lidShadow, 1.0, lid);
 
     outColor = vec4( col * lid, 1.0 );

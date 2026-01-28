@@ -18,8 +18,8 @@ pip3 install RPi.GPIO pyserial
 for VSCODE GLSL Lint extension:
 sudo apt install -y glslang-tools
 
-TEMP:
 
+Store one local to start GUI applications on remote (RPI):
 export DISPLAY=:0
 export XAUTHORITY=/home/pi/.Xauthority
 python3 ./main.py
@@ -29,13 +29,15 @@ python3 ./main.py
 export EYE_ID="1"
 
 Set backgroudn image:
-pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/pi.jpg
+pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/desktop.jpg
 
 Autohide taskbar (only shows on physical mouse):
-/home/pi/.config/wf-panel-pi
+/home/pi/.config/wf-panel-pi/wf-panel-pi.ini
+```
+[panel]
 autohide=true
 autohide_duration=500
-
+```
 
 WAYLAND_DISPLAY : None
 DISPLAY         : :0

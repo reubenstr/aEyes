@@ -47,9 +47,10 @@ class Eye:
         print(f"[Main] Socket requested at address: {address}")
 
     def init_local(self):
-        self.eye_id = os.getenv("EYE_ID", None)
-        if self.eye_id is None:
+        eye_id = os.getenv("EYE_ID", None)
+        if eye_id is None:
             self.eye_renderer.set_message("EYE_ID not found in ENV vars!")
+        self.eye_id = int(eye_id)
 
     ###############################################################################
     # Thread
@@ -75,21 +76,24 @@ class Eye:
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
-                    msg_dict = json.loads(msg_raw)
-                    print("Received:", msg_dict)
-                    msg = ControlMessage(**msg_dict)
+                    msg_json = json.loads(msg_raw)                   
+                    messages = [ControlMessage(**msg) for msg in msg_json]
+                  
+                    if self.eye_id:                      
+                        msg = messages[self.eye_id]                  
 
-                    self.eye_renderer.set_radius(msg.radius)
-                    self.eye_renderer.set_rotation_deg(msg.rotation_deg)
-                    self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
-                    self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
-
-
-
+                        self.eye_renderer.set_radius(msg.radius)
+                        self.eye_renderer.set_rotation_deg(msg.rotation_deg)
+                        self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
+                        self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
+                        self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
+                        self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)   
+                       
                 except zmq.Again:
-                    pass  # no message available
+                    # No message available.
+                    pass 
 
-            sleep(0.010)
+            sleep(0.005)
 
     ###############################################################################
     # General
