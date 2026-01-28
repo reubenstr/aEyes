@@ -3,22 +3,15 @@ import ctypes
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from utilities import srgb_to_linear, rgb255_srgb_to_linear
 
 import pyglet
 
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
 pyglet.options.shadow_window = False
-pyglet.options["backend"] = "egl"   # Raspberry Pi EGL
-
+pyglet.options["backend"] = "egl"  # Raspberry Pi EGL
 from pyglet import gl
 from pyglet.graphics.shader import Shader, ShaderProgram
-
-
-def srgb_to_linear(c: float) -> float:
-    return c ** 2.2  # approximation
-
-def rgb255_srgb_to_linear(r: int, g: int, b: int) -> tuple[float, float, float]:
-    return tuple(srgb_to_linear(x / 255.0) for x in (r, g, b))
 
 
 @dataclass
@@ -33,82 +26,73 @@ class EyeControls:
 
 
 class EyeRenderer:
-    def __init__(
-        self,
-        vert_path: Path,
-        frag_path: Path,
-        size: tuple[int, int] = (720, 720),       
-        update_hz: float = 60.0,
-        gles_major: int = 3,
-        gles_minor: int = 1,
-    ):
-        self.vert_path = vert_path
-        self.frag_path = frag_path
+    def __init__(self):
         self.controls = EyeControls()
 
+        self.update_hz: float = 60.0
+
         self._program: ShaderProgram | None = None
-        self._last_compile_error: str | None = None
 
         self._vao = gl.GLuint(0)
         self._vbo = gl.GLuint(0)
 
         self._start_time = time.time()
-  
+
         # blink scheduling state
         self._blink_start_t: float | None = None
         self._next_blink_t: float = 3.0
 
-        # ---- create window + config here ----
+        # Window configuration.
         display = pyglet.display.get_display()
         screen = display.get_default_screen()
         config = screen.get_best_config()
         config.opengl_api = "gles"
-        config.major_version = gles_major
-        config.minor_version = gles_minor
+        config.major_version = 3
+        config.minor_version = 1
 
-        self.window = pyglet.window.Window(
-            fullscreen=True,        
-            resizable=True,
-            config=config
-        )
+        self.window = pyglet.window.Window(fullscreen=True, resizable=True, config=config)
 
         self.pending_text = None
         self.message_label = pyglet.text.Label(
-                "",
-                font_name="Monospace",
-                font_size=18,
-                x=self.window.width // 2,
-                y=self.window.height // 2,
-                width=self.window.width,
-                multiline=True,
-                anchor_x="center",
-                anchor_y="center",
-                align="center",  
-                color=(255, 80, 80, 255),
-            )
-      
-        # attach handlers (no decorators needed)     
+            "",
+            font_name="Monospace",
+            font_size=18,
+            x=self.window.width // 2,
+            y=self.window.height // 2,
+            width=self.window.width,
+            multiline=True,
+            anchor_x="center",
+            anchor_y="center",
+            align="center",
+            color=(255, 80, 80, 255),
+        )
+
+        # Attach handlers.
         self.window.on_draw = self._on_draw
         self.window.on_key_press = self._on_key_press
 
         # GL resources + shaders
-        self._init_geometry()
+        self.init_geometry()
         self.reload_shaders()
 
         # schedule update
-        pyglet.clock.schedule_interval(self.update, 1.0 / update_hz)
+        pyglet.clock.schedule_interval(self.update, 1.0 / self.update_hz)
 
-    # -------- public API (for your future control class) --------
-    def set_rAmp(self, v: float) -> None:
+    ###############################################################################
+    # API
+    ###############################################################################
+    def set_radius(self, v: float) -> None:
         self.controls.rAmp = float(v)
 
     def set_rotation_deg(self, v: float) -> None:
         self.controls.rotation_deg = float(v)
 
-    def set_iris_color_rgb255(self, r: int, g: int, b: int) -> None:
+    def set_iris_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        r, g, b = rgb
         self.controls.iris_color = rgb255_srgb_to_linear(r, g, b)
 
-    def set_cornea_color_rgb255(self, r: int, g: int, b: int) -> None:
+    def set_cornea_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        r, g, b = rgb
         self.controls.cornea_color = rgb255_srgb_to_linear(r, g, b)
 
     def set_is_cat_eye(self, value: bool) -> None:
@@ -126,24 +110,35 @@ class EyeRenderer:
     def run(self) -> None:
         pyglet.app.run()
 
-    # -------- internal: geometry/shaders --------
-    def _build_program(self) -> ShaderProgram:
+    ###############################################################################
+    #
+    ###############################################################################
+    def build_program(self) -> ShaderProgram:
+        ROOT = Path(__file__).resolve().parent
+        self.vert_path = ROOT / "shaders" / "eye.vert"
+        self.frag_path = ROOT / "shaders" / "eye.frag"
         vert_src = self.vert_path.read_text(encoding="utf-8")
         frag_src = self.frag_path.read_text(encoding="utf-8")
 
         return ShaderProgram(
             Shader(vert_src, "vertex"),
             Shader(frag_src, "fragment"),
-    )
+        )
 
-    def _init_geometry(self) -> None:
+    def init_geometry(self) -> None:
         quad = [
-            -1.0, -1.0,
-             1.0, -1.0,
-             1.0,  1.0,
-            -1.0, -1.0,
-             1.0,  1.0,
-            -1.0,  1.0,
+            -1.0,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            1.0,
+            -1.0,
+            -1.0,
+            1.0,
+            1.0,
+            -1.0,
+            1.0,
         ]
 
         gl.glGenBuffers(1, ctypes.byref(self._vbo))
@@ -154,10 +149,10 @@ class EyeRenderer:
 
         gl.glGenVertexArrays(1, ctypes.byref(self._vao))
 
-    def _bind_geometry_to_program(self, prog: ShaderProgram) -> None:
+    def bind_geometry_to_program(self, prog: ShaderProgram) -> None:
         gl.glBindVertexArray(self._vao)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._vbo)
-       
+
         pos_loc = prog.attributes["position"]["location"]
         gl.glEnableVertexAttribArray(pos_loc)
         gl.glVertexAttribPointer(pos_loc, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, ctypes.c_void_p(0))
@@ -167,14 +162,12 @@ class EyeRenderer:
 
     def reload_shaders(self) -> None:
         try:
-            new_prog = self._build_program()
-            self._bind_geometry_to_program(new_prog)
+            new_prog = self.build_program()
+            self.bind_geometry_to_program(new_prog)
             self._program = new_prog
-            self._last_compile_error = None
             print("✅ Shaders reloaded.")
         except Exception as e:
-            self._last_compile_error = str(e)
-            print("❌ Shader compile/link failed:\n", self._last_compile_error)
+            print("❌ Shader compile/link failed")
 
     # -------- internal: blink/update --------
     @staticmethod
@@ -196,7 +189,7 @@ class EyeRenderer:
     def update(self, dt: float) -> None:
         now = self.now()
 
-        # auto-blink
+        """# auto-blink
         if now >= self._next_blink_t:
             self._blink_start_t = now
             jitter = 0.5 + 0.5 * math.sin(now * 12.345)
@@ -207,8 +200,8 @@ class EyeRenderer:
             if self.controls.blink <= 0.0 and (now - self._blink_start_t) > 0.25:
                 self._blink_start_t = None
         else:
-            self.controls.blink = 0.0
-       
+            self.controls.blink = 0.0"""
+
     # -------- internal: events --------
     def _on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.SPACE:
@@ -237,7 +230,7 @@ class EyeRenderer:
 
         prog = self._program
         prog.use()
-        
+
         prog["iTime"] = self.now()
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
         prog["rAmp"] = float(self.controls.rAmp)
@@ -246,7 +239,7 @@ class EyeRenderer:
         prog["irisColor"] = self.controls.iris_color
         prog["corneaColor"] = self.controls.cornea_color
         prog["isCatEye"] = self.controls.isCatEye
-   
+
         gl.glBindVertexArray(self._vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         gl.glBindVertexArray(0)
@@ -254,11 +247,12 @@ class EyeRenderer:
         prog.stop()
 
 
+###############################################################################
+# Main : for testing only with default parameters and no programic input.
+###############################################################################
 if __name__ == "__main__":
-    ROOT = Path(__file__).resolve().parent
-    app = EyeRenderer(
-        vert_path=ROOT / "shaders" / "eye.vert",
-        frag_path=ROOT / "shaders" / "eye.frag",     
-        update_hz=60.0,
-    )
-    app.run()
+    eye = EyeRenderer()
+    try:
+        eye.run()
+    except KeyboardInterrupt:
+        pass

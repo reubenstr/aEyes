@@ -25,6 +25,17 @@ export XAUTHORITY=/home/pi/.Xauthority
 python3 ./main.py
 
 
+### Environment
+export EYE_ID="1"
+
+Set backgroudn image:
+pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/pi.jpg
+
+Autohide taskbar (only shows on physical mouse):
+/home/pi/.config/wf-panel-pi
+autohide=true
+autohide_duration=500
+
 
 WAYLAND_DISPLAY : None
 DISPLAY         : :0

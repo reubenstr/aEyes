@@ -1,3 +1,11 @@
+
+def srgb_to_linear(c: float) -> float:
+    return c ** 2.2  # approximation
+
+def rgb255_srgb_to_linear(r: int, g: int, b: int) -> tuple[float, float, float]:
+    return tuple(srgb_to_linear(x / 255.0) for x in (r, g, b))
+
+
 def crc16_ccitt(data: bytes) -> int:
     """Calculate CRC16-CCITT checksum"""
     crc = 0xFFFF
