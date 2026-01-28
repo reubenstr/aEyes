@@ -67,3 +67,14 @@ https://github.com/bigtreetech/BIGTREETECH-TMC2208-V3.0
 ### Misc Resources
 
 RPI4 UART Pins: https://pragmaticaddict.com/raspi-5-serial-ports.html
+
+
+
+
+
+### Misc Setup, under test
+
+
+TEMP:
+echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 600000 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
