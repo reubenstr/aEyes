@@ -13,7 +13,6 @@ out vec4 fragColor;
 uniform float iTime;
 uniform vec2  iResolution;
 uniform float radius;
-//uniform float pupilSize;
 uniform vec3 irisColor;   
 uniform vec3 corneaColor;   
 uniform float eyeLidPosition; 
@@ -59,9 +58,7 @@ float length2( vec2 p )
 // A soft eyelid mask: when blink->1, visible opening narrows to a line.
 float eyelidMask(vec2 p, float blinkAmt)
 {
-    float closed   = smoothstep(0.0, 1.0, blinkAmt);
-    float openSize = 1.0;
-    float openness = mix(openSize, 0.02, closed);
+    float openness = mix(0.0, 1.0, blinkAmt);
 
     //float top = 0.52 * openness;
     //float bot = 0.42 * openness;
@@ -94,26 +91,20 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     vec2 p = (2.0*fragCoord - iResolution.xy) / iResolution.y;
     float r = length(p) * (1.0 + radius * clamp(1.0 - length(p), 0.0, 1.0));
     float a = atan( p.y, p.x );    
-
-    // Apply eyelid opening (blink)
-    float lid = eyelidMask(p, eyeLidPosition);
-
-    // If fully closed, draw a subtle lash/crease line instead of pure white
-    if (lid < 0.05) {
-        float crease = exp(-abs(p.y) * 180.0) * exp(-abs(p.x) * 3.0);
-        vec3 lash = vec3(0.04, 0.03, 0.03) * (0.35 + 0.65 * crease);
-        outColor = vec4(lash, 1.0);
-        return;
-    }    
-
+ 
     // iris color
     vec3 col = irisColor;
     float f = fbm( 5.0*p );
     col = mix( col, vec3(0.2,0.5,0.4), f );
 
-    // shade around iris
-    //col = mix( col, vec3(0.9,0.6,0.2), 1.0 - smoothstep(0.2,0.6,r) );
-    col = mix( col, vec3(0.0,0.0,0.0), 1.0 - smoothstep(0.2,0.6,r) );
+    // shade around iris, scales with cat eye
+    vec2 irisScale = vec2(isCatEye ? 0.7 : 1.0, 1.0);
+    vec2 iu = abs(p / irisScale);
+    float ikx = isCatEye ? 1.2 : 2.0; // softer than pupil
+    float iky = 2.0;
+    float ir = pow(pow(iu.x, ikx) + pow(iu.y, iky), 1.0 / ikx);
+    float irisShade = 1.0 - smoothstep(0.22, 0.65, ir);
+    col = mix(col, vec3(0.1,0.1,0.1), irisShade);
 
     // cornea splotching
     f = smoothstep( 0.4, 0.9, fbm( vec2(15.0*a,10.0*r) ) );
@@ -166,6 +157,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.1);
 
     // Apply eyelid mask + a little lid shadow as it closes
+    float lid = eyelidMask(p, eyeLidPosition);
     float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, eyeLidPosition));
     col *= mix(1.0 - lidShadow, 1.0, lid);
 
