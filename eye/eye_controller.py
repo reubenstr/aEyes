@@ -1,10 +1,10 @@
 import time
 import math
 
-from eye import Eye, rgb255_srgb_to_linear
+from eye import EyeRenderer, rgb255_srgb_to_linear
 
 class EyeController:
-    def __init__(self, app: Eye):
+    def __init__(self, app: EyeRenderer):
         self.app = app
         self._running = True
 

@@ -32,7 +32,7 @@ class EyeControls:
     isCatEye: bool = False
 
 
-class Eye:
+class EyeRenderer:
     def __init__(
         self,
         vert_path: Path,
@@ -256,7 +256,7 @@ class Eye:
 
 if __name__ == "__main__":
     ROOT = Path(__file__).resolve().parent
-    app = Eye(
+    app = EyeRenderer(
         vert_path=ROOT / "shaders" / "eye.vert",
         frag_path=ROOT / "shaders" / "eye.frag",     
         update_hz=60.0,
