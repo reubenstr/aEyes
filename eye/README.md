@@ -40,55 +40,55 @@ Use the Raspberry Pi creation tool and apply OS customization with the following
 
 Do not set hostname.
 
-After SD card is flashed, edit the config.txt file on the new partition and add the following lines after the **[ALL]** heading to enable the display and UART.
+Boot the Pi.
 
+Copy over SSH keys
 
-```
-# Enable Waveshare DSI LCD display
-dtoverlay=vc4-kms-v3d
-dtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC
-
-# Enable primary UART on GPIO14/15
-enable_uart=1
-
-# Free PL011 UART0 from Bluetooth so it appears on GPIO14/15
-dtoverlay=disable-bt
+```bash
+ssh-copy-id pi@192.168.1.<200+<EYE_ID>>
 ```
 
-Boot the RPi and update the system:
+Update the system:
 
 ```bash
 sudo apt update
 sudo apt full-upgrade
 ```
 
+Setup dependencies:
+
+```bash
+sudo apt install -y python3-venv
+pip install --upgrade pip
+```
+
 Clone the repo in the home directory:
 
 ```bash
-git@github.com:reubenstr/aEyes.git
+cd ~
+git clone git@github.com:reubenstr/aEyes.git
 ```
 
 ### Script Installation
 
-Run the setup.sh script to setup the virtual environment, install dependancies, and setup services.
-
+Run the setup.sh script to complete the following:
 
 - Selects EYE_ID (user selected)
+- Configs the RPi firmware (overlays)
 - Creates virtual environment
 - Adds EYE_ID to .env
 - Adds dev vars to user's .bashrc
-- Installs dependancies
+- Installs Python dependancies
 - Enables low power mode
-- Sets desktop background
+- Sets the desktop background image
 - Hides the taskbar
 - Installs services
 - Configures ethernet static IP
 
 
-sudo apt install -y python3-venv
-pip install --upgrade pip
-python3 -m venv .venv
-source .venv/bin/activate
+
+
+
 sudo apt install -y python3-dev libgl1-mesa-dev libx11-dev
 
 pip install pyglet moderngl PyOpenGL vispy
@@ -114,6 +114,15 @@ python3 ./main.py
 sudo hostnamectl set-hostname <new-hostname>
 
 
+## Manual execution
+
+Eyes:
+
+```
+cd aEyes/eyes
+chmod +x main.sh
+sudo ./main.sh
+```
 
 
 ## Debugging

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Check if the script is run with sudo
+# Check if the script is run with sudo.
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root, use sudo." >&2
     exit 1
 fi
 
-# Activate the virtual environment
+# Activate the virtual environment.
 if [ -f ".venv/bin/activate" ]; then
     echo "Activating virtual environment..."
 else
@@ -22,12 +22,15 @@ else
     exit 1
 fi
 
-# Source .env variables
+# Source .env variables as user (not sudo).
 if [ -f ".env" ]; then
+    set -a
     source .env
+    set +a
 else
     echo ".env file not found." >&2
     exit 1
 fi
 
+# Run the main app and pass through arguments.
 exec python3 main.py "$@"

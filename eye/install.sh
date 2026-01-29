@@ -139,6 +139,7 @@ cat > "$CONFIG_FILE" <<EOF
 [panel]
 autohide=true
 autohide_duration=500
+height=1
 EOF
 
 echo "Taskbar set to autohide for user $USER_NAME. Only visible using physical mouse."
@@ -177,3 +178,6 @@ echo "Ethernet IP set to $ETH_IP"
 
 # Complete
 echo "Setup complete."
+echo "A reboot is required to updates to take effect!"
+
+

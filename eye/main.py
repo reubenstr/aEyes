@@ -48,10 +48,13 @@ class Eye:
         print(f"[Main] Socket requested at address: {address}")
 
     def init_local(self):
+        for key, value in os.environ.items(): 
+            print(f"{key}={value}")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
-            self.eye_renderer.set_message("EYE_ID not found in ENV vars!")
-        self.eye_id = int(eye_id)
+            self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")
+        else:    
+            self.eye_id = int(eye_id)
 
     ###############################################################################
     # Thread
