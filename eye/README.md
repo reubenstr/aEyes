@@ -120,7 +120,6 @@ Eyes:
 
 ```
 cd aEyes/eyes
-chmod +x main.sh
 sudo ./main.sh
 ```
 

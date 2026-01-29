@@ -47,9 +47,7 @@ class Eye:
         self.socket.setsockopt_string(zmq.SUBSCRIBE, "")
         print(f"[Main] Socket requested at address: {address}")
 
-    def init_local(self):
-        for key, value in os.environ.items(): 
-            print(f"{key}={value}")
+    def init_local(self):      
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
             self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")

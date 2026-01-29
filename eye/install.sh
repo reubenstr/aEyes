@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Check if the device is a Raspberry Pi
+if grep -q "Raspberry Pi" /proc/device-tree/model; then
+    echo "Installing service on a Raspberry Pi..."
+else
+    echo "This installation script is only for the Raspberry Pi!"
+    exit 1
+fi
+
+
 # Must be run as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run with sudo or as root"
@@ -52,7 +61,7 @@ otg_mode=1
 [all]
 # Reduce clocks for lower power consumption
 arm_freq=600
-gpu_freq=400
+gpu_freq=500
 over_voltage=0
 
 # Enable Waveshare DSI LCD display
@@ -178,6 +187,6 @@ echo "Ethernet IP set to $ETH_IP"
 
 # Complete
 echo "Setup complete."
-echo "A reboot is required to updates to take effect!"
+echo "A reboot is required for updates to take effect!"
 
 
