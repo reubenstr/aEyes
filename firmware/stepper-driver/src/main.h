@@ -1,13 +1,13 @@
 #pragma pack(1)
-struct Command {
-    bool enable;
-    bool zero;
-    float angleBase;
-    float angleEye;
+struct Message {
+    bool motorEnable;   
+    float position0;
+    float position1;
 };
 
 #pragma pack(1)
-struct RxDataPacket {
-    Command command; 
+struct MessagePacket
+{
+    Message command; 
     uint16_t crc;     
 };

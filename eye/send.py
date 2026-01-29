@@ -10,12 +10,12 @@ def crc16_ccitt(data: bytes) -> int:
             crc &= 0xFFFF
     return crc
 
-def create_rx_data_packet(enable: bool, zero: bool, angle_base: float, angle_eye: float) -> bytes:
+def create_rx_data_packet(enable: bool, home: bool, angle_base: float, angle_eye: float) -> bytes:
     """Create RxDataPacket with Command payload and CRC"""
     
     command_data = struct.pack('<BBff', 
                                int(enable), 
-                               int(zero), 
+                               int(home), 
                                angle_base, 
                                angle_eye)
     
