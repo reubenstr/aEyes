@@ -18,13 +18,26 @@ pip3 install RPi.GPIO pyserial
 for VSCODE GLSL Lint extension:
 sudo apt install -y glslang-tools
 
-TEMP:
 
+Store one local to start GUI applications on remote (RPI):
 export DISPLAY=:0
 export XAUTHORITY=/home/pi/.Xauthority
 python3 ./main.py
 
 
+### Environment
+export EYE_ID="1"
+
+Set backgroudn image:
+pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/desktop.jpg
+
+Autohide taskbar (only shows on physical mouse):
+/home/pi/.config/wf-panel-pi/wf-panel-pi.ini
+```
+[panel]
+autohide=true
+autohide_duration=500
+```
 
 WAYLAND_DISPLAY : None
 DISPLAY         : :0
@@ -67,3 +80,14 @@ https://github.com/bigtreetech/BIGTREETECH-TMC2208-V3.0
 ### Misc Resources
 
 RPI4 UART Pins: https://pragmaticaddict.com/raspi-5-serial-ports.html
+
+
+
+
+
+### Misc Setup, under test
+
+
+TEMP:
+echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 600000 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
