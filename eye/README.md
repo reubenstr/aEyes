@@ -75,6 +75,8 @@ Run the setup.sh script to setup the virtual environment, install dependancies, 
 
 - Selects EYE_ID (user selected)
 - Creates virtual environment
+- Adds EYE_ID to .env
+- Adds dev vars to user's .bashrc
 - Installs dependancies
 - Enables low power mode
 - Sets desktop background
@@ -112,6 +114,12 @@ export EYE_ID="1"
 sudo hostnamectl set-hostname <new-hostname>
 
 pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/desktop.jpg
+
+wf-background --image /home/pi/aEyes/eye/media/temp.jpg
+
+
+sudo -u pi DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/temp.jpg
+
 
 Autohide taskbar (only shows on physical mouse):
 /home/pi/.config/wf-panel-pi/wf-panel-pi.ini

@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# Must be run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run with sudo or as root"
+    exit 1
+fi
+
+USER_NAME="${SUDO_USER:-$USER}"
+USER_HOME=$(eval echo "~$USER_NAME")
+USER_BASHRC="$USER_HOME/.bashrc"
+
 # Resolve absolute project root (current working directory)
 ROOT_DIR="$(pwd -P)"
 
@@ -29,14 +39,21 @@ fi
 
 # Add environmental variables
 ENV_FILE=".env"
-
-if [ -f "$ENV_FILE" ]; then
-    grep -v '^EYE_ID=' "$ENV_FILE" > "${ENV_FILE}.tmp"
-    mv "${ENV_FILE}.tmp" "$ENV_FILE"
-fi
-
+rm -f "$ENV_FILE"
 echo "EYE_ID=$EYE_ID" >> "$ENV_FILE"
 echo "EYE_ID=$EYE_ID stored in .env"
+
+
+# Add environment variables to the user's .bashrc
+# Add DISPLAY only if missing
+grep -qxF 'export DISPLAY=:0' "$USER_BASHRC" \
+    || echo 'export DISPLAY=:0' >> "$USER_BASHRC"
+
+# Add XAUTHORITY only if missing
+grep -qxF "export XAUTHORITY=$USER_HOME/.Xauthority" "$USER_BASHRC" \
+    || echo "export XAUTHORITY=$USER_HOME/.Xauthority" >> "$USER_BASHRC"
+
+echo "Environment variables added in $USER_BASHRC"
 
 
 # Install requirements
@@ -47,22 +64,33 @@ else
     echo "requirements.txt not found"
     exit 1
 fi
-
+echo "Dependancies installed."
 
 # Install desktop wallpaper.
-WALLPAPER_PATH="$ROOT_DIR/eye/media/desktop.jpg"
+WALLPAPER_PATH="$ROOT_DIR/media/desktop.jpg"
+PCMANFM_CONF="$USER_HOME/.config/pcmanfm/default/desktop-items-DSI-1.conf"
 
 if [ ! -f "$WALLPAPER_PATH" ]; then
     echo "Wallpaper not found: $WALLPAPER_PATH"
     exit 1
 fi
 
-pcmanfm --set-wallpaper "$WALLPAPER_PATH"
+if [ ! -f "$PCMANFM_CONF" ]; then
+    echo "Error: $PCMANFM_CONF does not exist. Cannot update wallpaper."
+    exit 1
+fi
+
+if grep -q '^wallpaper=' "$PCMANFM_CONF"; then
+    sed -i "s|^wallpaper=.*|wallpaper=$WALLPAPER_PATH|" "$PCMANFM_CONF"
+else
+    echo "wallpaper=$WALLPAPER_PATH" >> "$PCMANFM_CONF"
+fi
+
 echo "Desktop background set to $WALLPAPER_PATH"
 
 
-# Set taskbar to autohide:
-CONFIG_DIR="$HOME/.config/wf-panel-pi"
+# Determine the real user
+CONFIG_DIR="$USER_HOME/.config/wf-panel-pi"
 CONFIG_FILE="$CONFIG_DIR/wf-panel-pi.ini"
 
 mkdir -p "$CONFIG_DIR"
@@ -72,38 +100,39 @@ cat > "$CONFIG_FILE" <<EOF
 autohide=true
 autohide_duration=500
 EOF
-echo "Taskbar set to autohide. Only visible using physical mouse."
+
+echo "Taskbar set to autohide for user $USER_NAME. Only visible using physical mouse."
 
 
 # Configure ethernet with static IP:
 IP_LAST_OCTET=$((200 + EYE_ID))
 ETH_IP="192.168.1.${IP_LAST_OCTET}/24"
 
-# Find the active Ethernet connection name
-ETH_CON="$(nmcli -t -f NAME,DEVICE con show --active | grep ':eth0$' | cut -d: -f1)"
+# Find Ethernet connection associated with eth0 (active or not)
+ETH_CON="$(nmcli -t -f NAME,DEVICE con show | grep ':eth0$' | cut -d: -f1)"
 
-# Fallback: first wired connection if not active yet
+# Fallback: first ethernet-type connection
 if [ -z "$ETH_CON" ]; then
-    ETH_CON="$(nmcli -t -f NAME,TYPE con show | grep ':ethernet$' | cut -d: -f1 | head -n1)"
+    ETH_CON="$(nmcli -t -f NAME,TYPE con show | grep -E ':ethernet$|:802-3-ethernet$' | cut -d: -f1 | head -n1)"
 fi
 
 if [ -z "$ETH_CON" ]; then
-    echo "No Ethernet connection found for eth0"
+    echo "No Ethernet connection profile found"
     exit 1
 fi
 
-# Configure static IP without affecting Wi-Fi
+# Configure static IP on ethernet
+# Set the route-metric to prefer wifi
 nmcli con mod "$ETH_CON" \
     ipv4.method manual \
     ipv4.addresses "$ETH_IP" \
     ipv4.gateway "" \
     ipv4.dns "" \
-    ipv4.never-default yes
+    ipv4.never-default yes \
+    ipv4.route-metric 900
 
 nmcli con up "$ETH_CON"
 echo "Ethernet IP set to $ETH_IP"
-
-
 
 
 # Complete
