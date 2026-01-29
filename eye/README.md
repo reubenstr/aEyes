@@ -109,33 +109,10 @@ python3 ./main.py
 
 
 ### Environment
-export EYE_ID="1"
+
 
 sudo hostnamectl set-hostname <new-hostname>
 
-pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/desktop.jpg
-
-wf-background --image /home/pi/aEyes/eye/media/temp.jpg
-
-
-sudo -u pi DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus pcmanfm --set-wallpaper /home/pi/aEyes/eye/media/temp.jpg
-
-
-Autohide taskbar (only shows on physical mouse):
-/home/pi/.config/wf-panel-pi/wf-panel-pi.ini
-```
-[panel]
-autohide=true
-autohide_duration=500
-```
-
-
-sudo nmcli con mod "ethernet" ipv4.addresses 192.168.1.200/24
-sudo nmcli con mod "ethernet" ipv4.gateway 192.168.1.200
-sudo nmcli con mod "ethernet" ipv4.dns "8.8.8.8,8.8.4.4"
-sudo nmcli con mod "ethernet" ipv4.method manual
-sudo nmcli con mod "ethernet" connection.autoconnect yes
-sudo nmcli con up "ethernet"
 
 
 
