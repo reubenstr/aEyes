@@ -60,11 +60,17 @@ class Controller:
             r, g, b = lerp_rgb((r0, g0, b0), (r1, g1, b1), u)
                 
                
-            radius = 0.25 + 0.20 * math.sin(t * 0.8)          
+            # radius = 0.25 + 0.20 * math.sin(t * 0.8)
+            radius = (math.sin(t * 4) + 1) / 2  
+
             rotation_deg = 10.0 * math.sin(t * 0.3)
             eye_lid_position = (math.sin(t) + 1) / 2           
             iris_color = tuple([int(r), int(g), int(b)])
             cornea_color = tuple([255 - int(r), 255-int(g), 255-int(b)])
+
+            motor_enable = True
+            position_0 = ((math.sin(t) + 1) / 2) * 90 - 45
+            position_1 = ((math.sin(t) + 1) / 2) * 90 - 45
                         
             messages = []
             for i in range(6):
@@ -75,7 +81,10 @@ class Controller:
                         eye_lid_position=eye_lid_position,                       
                         iris_color=iris_color,
                         cornea_color=cornea_color,
-                        is_cat_eye=False
+                        is_cat_eye=False,
+                        motor_enable=motor_enable,
+                        position_0=position_0,
+                        position_1=position_1
                     )
                 )
 
