@@ -58,7 +58,7 @@ float length2( vec2 p )
 // A soft eyelid mask: when blink->1, visible opening narrows to a line.
 float eyelidMask(vec2 p, float blinkAmt)
 {
-    float openness = mix(0.0, 1.0, blinkAmt);
+    float openness = mix(0.0, 0.8, blinkAmt);
 
     //float top = 0.52 * openness;
     //float bot = 0.42 * openness;
@@ -88,7 +88,7 @@ float eyelidMask(vec2 p, float blinkAmt)
 
 void mainImage( out vec4 outColor, in vec2 fragCoord )
 {
-    vec2 p = (2.0*fragCoord - iResolution.xy) / iResolution.y;
+    vec2 p = (2.0 *fragCoord - iResolution.xy) / iResolution.y;
     float r = length(p) * (1.0 + radius * clamp(1.0 - length(p), 0.0, 1.0));
     float a = atan( p.y, p.x );    
  
@@ -148,7 +148,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float edge = 0.8;
     float blur = 3.0 * fwidth(r); 
     f = smoothstep(edge - blur, edge + blur, r);
-    // vec3 scleraColor = vec3(0.2, 0.2, 0.2);
+    //vec3 scleraColor = vec3(0.8, 0.8, 0.8);
     vec3 scleraColor = vec3(0.0, 0.0, 0.0);
     col = mix(col, scleraColor, f);
 

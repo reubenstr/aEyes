@@ -29,6 +29,7 @@ class Eye:
     def init_eye_renderer(self):
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
+        self.eye_renderer.set_message('info', 'Waiting for data.')
 
     def init_serial(self):
         try:
@@ -79,15 +80,18 @@ class Eye:
                     msg_json = json.loads(msg_raw)                   
                     messages = [ControlMessage(**msg) for msg in msg_json]
                   
-                    if self.eye_id:                      
+                    if self.eye_id:  
                         msg = messages[self.eye_id]                  
 
+                        self.eye_renderer.set_message('', '')
                         self.eye_renderer.set_radius(msg.radius)
                         self.eye_renderer.set_rotation_deg(msg.rotation_deg)
                         self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
                         self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
                         self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
                         self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)   
+
+                        self.send_driver_message(msg.motor_enable, msg.position_0, msg.position_1)
                        
                 except zmq.Again:
                     # No message available.
@@ -119,9 +123,9 @@ class Eye:
     ###############################################################################
     # Messages out
     ###############################################################################
-    def send_position_message(self, enable: bool, zero: bool, angle_base: float, angle_eye: float) -> bytes:
+    def send_driver_message(self, enable: bool, position_0: float, position_1: float) -> bytes:
 
-        command_data = struct.pack("<BBff", int(enable), int(zero), angle_base, angle_eye)
+        command_data = struct.pack("<Bff", int(enable), position_0, position_1)
 
         crc = crc16_ccitt(command_data)
         crc_bytes = struct.pack("<H", crc)

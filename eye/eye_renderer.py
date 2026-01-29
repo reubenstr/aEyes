@@ -88,7 +88,11 @@ class EyeRenderer:
     def set_is_cat_eye(self, value: bool) -> None:
         self.controls.is_cat_eye = bool(value)
 
-    def set_message(self, text: str) -> None:
+    def set_message(self, msgType: str,  text: str) -> None:
+        if msgType == 'error':
+            self.message_label.color = color=(255, 80, 80, 255)
+        else:
+            self.message_label.color = color=(225, 225, 225, 255)
         self.pending_text = text
 
     def run(self) -> None:
@@ -188,11 +192,11 @@ class EyeRenderer:
         prog["iTime"] = time.time()
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
         prog["radius"] = float(self.controls.radius)
+        prog["eyeLidPosition"] = self.controls.eye_lid_position
         prog["rotation"] = float(self.controls.rotation_deg)
         prog["irisColor"] = self.controls.iris_color
         prog["corneaColor"] = self.controls.cornea_color
         prog["isCatEye"] = self.controls.is_cat_eye
-        prog["eyeLidPosition"] = self.controls.eye_lid_position
 
         gl.glBindVertexArray(self._vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
