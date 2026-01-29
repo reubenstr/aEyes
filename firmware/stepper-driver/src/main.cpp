@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <AccelStepper.h>
 #include <TMCStepper.h>
+#include <Adafruit_NeoPixel.h>
 #include <crc.h>
 #include <main.h>
 
@@ -49,6 +50,7 @@ AccelStepper stepper0(AccelStepper::DRIVER, STEP_PIN_0, DIR_PIN_0);
 AccelStepper stepper1(AccelStepper::DRIVER, STEP_PIN_1, DIR_PIN_1);
 
 bool motorsEnabled{false};
+bool receivedFirstDataFlag{false};
 
 const float minAngleDeg0{-45.0};
 const float maxAngleDeg0{45.0};
@@ -59,8 +61,31 @@ const float homedAngleDeg0{45};
 const float homedAngleDeg1{45};
 
 bool isHoming{false};
+long homeingStartMs;
 bool stepperHomed0{false};
 bool stepperHomed1{false};
+
+const long homingTimeoutMs{5000};
+
+#define NEO_PIXEL_PIN 48
+Adafruit_NeoPixel pixel(0, NEO_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+///////////////////////////////////////////////////////////////////////////////
+// LED / Indicator
+///////////////////////////////////////////////////////////////////////////////
+
+void fatalError()
+{
+  while (true)
+  {
+    pixel.setPixelColor(0, RED);
+    pixel.show();
+    delay(100);
+    pixel.setPixelColor(0, OFF);
+    pixel.show();
+    delay(100);
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Stepper Interfaces
@@ -68,25 +93,28 @@ bool stepperHomed1{false};
 
 void driverSetup()
 {
+  // Driver 0:
   pinMode(EN_PIN_0, OUTPUT);
   pinMode(STEP_PIN_0, OUTPUT);
   pinMode(DIR_PIN_0, OUTPUT);
   pinMode(DIAG_PIN_0, INPUT);
   digitalWrite(EN_PIN_0, LOW);
 
+  DRIVER_SERIAL_PORT_0.begin(115200, SERIAL_8N1, PDN_RX_PIN_0, PDN_TX_PIN_0);
+
+  driver0.begin();
+  driver0.rms_current(RMS_CURRENT_0);
+  driver0.pwm_autoscale(1);
+  driver0.microsteps(MICRO_STEPS_0);
+
+  // Driver 1:
   pinMode(EN_PIN_1, OUTPUT);
   pinMode(STEP_PIN_1, OUTPUT);
   pinMode(DIR_PIN_1, OUTPUT);
   pinMode(DIAG_PIN_1, INPUT);
   digitalWrite(EN_PIN_1, LOW);
 
-  DRIVER_SERIAL_PORT_0.begin(115200, SERIAL_8N1, PDN_RX_PIN_0, PDN_TX_PIN_0);
   DRIVER_SERIAL_PORT_1.begin(115200, SERIAL_8N1, PDN_RX_PIN_1, PDN_TX_PIN_1);
-
-  driver0.begin();
-  driver0.rms_current(RMS_CURRENT_0);
-  driver0.pwm_autoscale(1);
-  driver0.microsteps(MICRO_STEPS_0);
 
   driver1.begin();
   driver1.rms_current(RMS_CURRENT_1);
@@ -125,11 +153,17 @@ void startHoming()
   stepperHomed1 = false;
   stepper1.moveTo(homedAngleDeg1 * 2);
 
+  homeingStartMs = millis();
+
   // TODO: set registers?
 }
 
 void checkHoming()
 {
+  if (millis() - homeingStartMs > homingTimeoutMs)
+  {
+    fatalError();
+  }
 
   if (digitalRead(DIAG_PIN_0))
   {
@@ -218,6 +252,13 @@ void processCommand()
 
   if (newMessageFlag)
   {
+    if (!receivedFirstDataFlag)
+    {
+      receivedFirstDataFlag = true;
+      pixel.setPixelColor(0, GREEN);
+      pixel.show();
+    }
+
     if (xSemaphoreTake(rxDataMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
       newMessageFlag = false;
@@ -261,7 +302,9 @@ void processCommand()
 
 void setup()
 {
-  pinMode(PIN_NEOPIXEL, OUTPUT);
+  pixel.begin();
+  pixel.setPixelColor(0, BLUE);
+  pixel.show();
 
   Serial.begin(115200);
   // COMMAND_SERIAL_PORT.begin(115200, SERIAL_8N1, COMMAND_SERIAL_RX_PIN, COMMAND_SERIAL_TX_PIN);
