@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
 # Check if the device is a Raspberry Pi
 if grep -q "Raspberry Pi" /proc/device-tree/model; then
     echo "Installing service on a Raspberry Pi..."
@@ -9,7 +10,7 @@ else
     exit 1
 fi
 
-
+# -----------------------------------------------------------------------------
 # Must be run as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run with sudo or as root"
@@ -19,11 +20,10 @@ fi
 USER_NAME="${SUDO_USER:-$USER}"
 USER_HOME=$(eval echo "~$USER_NAME")
 USER_BASHRC="$USER_HOME/.bashrc"
-
-# Resolve absolute project root (current working directory)
 ROOT_DIR="$(pwd -P)"
 
-# Prompt for ID
+# -----------------------------------------------------------------------------
+# Prompt for EYE_ID
 printf "Enter EYE_ID (1 through 6): "
 read EYE_ID
 
@@ -39,8 +39,7 @@ if [ "$EYE_ID" -lt 1 ] || [ "$EYE_ID" -gt 6 ]; then
     exit 1
 fi
 
-
-
+# -----------------------------------------------------------------------------
 # Update firmare config.
 CFG="/boot/firmware/config.txt"
 
@@ -77,8 +76,7 @@ EOF
 
 echo "Firmware config updates: $CFG"
 
-
-
+# -----------------------------------------------------------------------------
 # Create virtual environment if it does not exist
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
@@ -92,7 +90,7 @@ rm -f "$ENV_FILE"
 echo "EYE_ID=$EYE_ID" >> "$ENV_FILE"
 echo "EYE_ID=$EYE_ID stored in .env"
 
-
+# -----------------------------------------------------------------------------
 # Add environment variables to the user's .bashrc allow to use the display over SSH.
 # Add DISPLAY only if missing
 grep -qxF 'export DISPLAY=:0' "$USER_BASHRC" \
@@ -115,6 +113,7 @@ else
 fi
 echo "Dependancies installed."
 
+# -----------------------------------------------------------------------------
 # Install desktop wallpaper.
 WALLPAPER_PATH="$ROOT_DIR/media/desktop.jpg"
 PCMANFM_CONF="$USER_HOME/.config/pcmanfm/default/desktop-items-DSI-1.conf"
@@ -137,8 +136,8 @@ fi
 
 echo "Desktop background set to $WALLPAPER_PATH"
 
-
-# Determine the real user
+# -----------------------------------------------------------------------------
+# Hide taskbar
 CONFIG_DIR="$USER_HOME/.config/wf-panel-pi"
 CONFIG_FILE="$CONFIG_DIR/wf-panel-pi.ini"
 
@@ -153,7 +152,7 @@ EOF
 
 echo "Taskbar set to autohide for user $USER_NAME. Only visible using physical mouse."
 
-
+# -----------------------------------------------------------------------------
 # Configure ethernet with static IP:
 IP_LAST_OCTET=$((200 + EYE_ID))
 ETH_IP="192.168.1.${IP_LAST_OCTET}/24"
@@ -184,9 +183,34 @@ nmcli con mod "$ETH_CON" \
 nmcli con up "$ETH_CON"
 echo "Ethernet IP set to $ETH_IP"
 
+# -----------------------------------------------------------------------------
+# Install main.service 
+sudo tee /etc/systemd/system/main.service > /dev/null << EOF
+[Unit]
+Description=Main Service
+After=multi-user.target         
 
+[Service]
+Type=simple
+WorkingDirectory=$HOME/aEyes/src
+ExecStart=$HOME/aEyes/eyes/main.sh --service
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable main.service
+sudo systemctl stop main.service
+sudo systemctl start main.service
+
+echo "Service installation complete"
+echo "Run this command to see the service status: sudo systemctl status main.service"
+echo "Run this command to see live logs: sudo journalctl -u main.service -f"
+
+# -----------------------------------------------------------------------------
 # Complete
 echo "Setup complete."
 echo "A reboot is required for updates to take effect!"
-
-
