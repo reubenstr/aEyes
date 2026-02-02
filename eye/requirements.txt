@@ -19,3 +19,5 @@ RPi.GPIO==0.7.1
 urllib3==2.6.3
 vispy==0.16.1
 yarg==0.1.10
+rich==14.1.0
+python-can==4.5.0

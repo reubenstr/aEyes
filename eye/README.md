@@ -12,9 +12,12 @@ Executed on the Raspbery Pi 4.
 Waveshare 4inch DSI LCD
 - https://www.waveshare.com/wiki/4inch_DSI_LCD_(C)
 
-Waveshare POE Hat (or your choice of POE hat)
+Waveshare POE Hat
 - https://www.waveshare.com/poe-hat-e.htm
 - https://www.waveshare.com/poe-hat-c.htm
+
+Waveshare RS485 CAN Hat
+- https://www.waveshare.com/wiki/2-CH_CAN_HAT
 
 Custom stepper driver board containing ESP32-S3 and two TMC2209 drivers
  - /aEyes/pcb/stepper-driver/
@@ -152,3 +155,15 @@ RPI4 UART Pins: https://pragmaticaddict.com/raspi-5-serial-ports.html
 TEMP:
 echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 echo 600000 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
+
+
+MORE:
+
+sudo ip link set can0 up type can bitrate 1000000
+sudo ifconfig can0 txqueuelen 65536
+sudo ifconfig can0 up
+
+
+sudo ip link set can1 up type can bitrate 1000000
+sudo ifconfig can1 txqueuelen 65536
+sudo ifconfig can1 up

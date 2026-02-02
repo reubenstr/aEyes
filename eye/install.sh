@@ -67,11 +67,10 @@ over_voltage=0
 dtoverlay=vc4-kms-v3d
 dtoverlay=vc4-kms-dsi-waveshare-panel,4_0_inchC
 
-# Enable primary UART on GPIO14/15
-enable_uart=1
-
-# Free PL011 UART0 from Bluetooth so it appears on GPIO14/15
-dtoverlay=disable-bt
+# SPI and Overlay for Waveshare CAN Hat
+dtparam=spi=on
+dtoverlay=mcp2515-can1,oscillator=16000000,interrupt=25
+dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=23
 EOF
 
 echo "Firmware config updates: $CFG"
