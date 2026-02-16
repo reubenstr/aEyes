@@ -24,11 +24,13 @@ class Eye:
     ###############################################################################
 
     def init_eye_renderer(self):
+        print("[Main] init eye renderer")
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
         self.eye_renderer.set_message('info', 'Waiting for data.')
 
     def init_socket(self):
+        print("[Main] init zmq")
         context = zmq.Context()
         self.socket = context.socket(zmq.SUB)
         address = f"tcp://{SOCKET_ADDRESS}:{SOCKET_PORT}"
@@ -37,6 +39,7 @@ class Eye:
         print(f"[Main] Socket requested at address: {address}")
 
     def init_local(self):      
+        print("[Main] init local variables")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
             self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")
@@ -44,10 +47,12 @@ class Eye:
             self.eye_id = int(eye_id)
 
     def init_motors(self):
+        print("[Main] init motors")
         self.motors = Motors(allow_enable=True)
         self.motors.enable_all_motors()
         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
         self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
+        sleep(3)
 
     ###############################################################################
     # Thread

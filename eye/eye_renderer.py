@@ -1,12 +1,8 @@
 import time
 import ctypes
-import math
-from dataclasses import dataclass
 from pathlib import Path
-from utilities import srgb_to_linear, rgb255_srgb_to_linear
 
 import pyglet
-
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
 pyglet.options.shadow_window = False
 pyglet.options["backend"] = "egl"  # Raspberry Pi EGL
@@ -14,20 +10,17 @@ from pyglet import gl
 from pyglet.graphics.shader import Shader, ShaderProgram
 
 
-@dataclass
-class EyeControls:
-    radius: float = 0.2
-    rotation_deg: float = 0.0
-    eye_lid_position: float = 0.0
-    iris_color: tuple[float, float, float] = rgb255_srgb_to_linear(0, 255, 0)
-    cornea_color: tuple[float, float, float] = rgb255_srgb_to_linear(255, 0, 0)
-    is_cat_eye: bool = False
-
-
 class EyeRenderer:
-    def __init__(self):
-        self.controls = EyeControls()
-     
+    def __init__(self): 
+
+        # Render controls
+        self.radius: float = 0.2
+        self.rotation_deg: float = 0.0
+        self.eye_lid_position: float = 0.0
+        self.iris_color: tuple[float, float, float] = rgb255_srgb_to_linear(0, 255, 0)
+        self.cornea_color: tuple[float, float, float] = rgb255_srgb_to_linear(255, 0, 0)
+        self.is_cat_eye: bool = False
+
         self._program: ShaderProgram | None = None
         self._vao = gl.GLuint(0)
         self._vbo = gl.GLuint(0)   
@@ -69,24 +62,22 @@ class EyeRenderer:
     # API
     ###############################################################################
     def set_radius(self, v: float) -> None:
-        self.controls.radius = float(v)
+        self.radius = float(v)
 
     def set_rotation_deg(self, v: float) -> None:
-        self.controls.rotation_deg = float(v)
+        self.rotation_deg = float(v)
 
     def set_eye_lid_position(self, v: float) -> None:
-        self.controls.eye_lid_position = float(v)
+        self.eye_lid_position = float(v)
   
     def set_iris_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
-        r, g, b = rgb
-        self.controls.iris_color = rgb255_srgb_to_linear(r, g, b)
+        self.iris_color = rgb255_srgb_to_linear(*rgb)
 
     def set_cornea_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
-        r, g, b = rgb
-        self.controls.cornea_color = rgb255_srgb_to_linear(r, g, b)
+        self.cornea_color = rgb255_srgb_to_linear(*rgb)
 
     def set_is_cat_eye(self, value: bool) -> None:
-        self.controls.is_cat_eye = bool(value)
+        self.is_cat_eye = bool(value)
 
     def set_message(self, msgType: str,  text: str) -> None:
         if msgType == 'error':
@@ -161,19 +152,9 @@ class EyeRenderer:
     # Handlers
     ###############################################################################
 
-    def _on_key_press(self, symbol, modifiers):
-        if symbol == pyglet.window.key.SPACE:
-            self.trigger_blink()
-        elif symbol == pyglet.window.key.R:
-            self.reload_shaders()
-        elif symbol == pyglet.window.key.A:
-            self.controls.radius += 0.2
-        elif symbol == pyglet.window.key.D:
-            self.controls.radius -= 0.2
-        elif symbol == pyglet.window.key.Q:
-            self.controls.rotation_deg += 1.0
-        elif symbol == pyglet.window.key.W:
-            self.controls.rotation_deg -= 1.0
+    def _on_key_press(self, symbol, modifiers):       
+        if symbol == pyglet.window.key.R:
+            self.reload_shaders()       
 
     def _on_draw(self):
         self.window.clear()
@@ -191,18 +172,30 @@ class EyeRenderer:
 
         prog["iTime"] = time.time()
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
-        prog["radius"] = float(self.controls.radius)
-        prog["eyeLidPosition"] = self.controls.eye_lid_position
-        prog["rotation"] = float(self.controls.rotation_deg)
-        prog["irisColor"] = self.controls.iris_color
-        prog["corneaColor"] = self.controls.cornea_color
-        prog["isCatEye"] = self.controls.is_cat_eye
+        prog["radius"] = float(self.radius)
+        prog["eyeLidPosition"] = self.eye_lid_position
+        prog["rotation"] = float(self.rotation_deg)
+        prog["irisColor"] = self.iris_color
+        prog["corneaColor"] = self.cornea_color
+        prog["isCatEye"] = self.is_cat_eye
 
         gl.glBindVertexArray(self._vao)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         gl.glBindVertexArray(0)
 
         prog.stop()
+
+###############################################################################
+# Helpers
+###############################################################################
+
+@staticmethod
+def srgb_to_linear(c: float) -> float:
+    return c ** 2.2  # approximation
+
+@staticmethod
+def rgb255_srgb_to_linear(r: int, g: int, b: int) -> tuple[float, float, float]:
+    return tuple(srgb_to_linear(x / 255.0) for x in (r, g, b))
 
 
 ###############################################################################
