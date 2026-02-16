@@ -11,15 +11,12 @@ from typing import Dict, List
 
 from motors.motor import Motor
 from motors.motor_list import motor_list
-from motors.interfaces import CanInfo, MotorZeroInfo, Status
+from motors.interfaces import CanInfo, MotorZeroInfo, Status, MotorName
 
 
 """
     Controls a collection of MG4010E-i10v3 actuators on a multiple CAN bus networks.
-
-    See motor.py for motor information
 """
-
 
 class Motors:
     def __init__(self, allow_enable: bool):
@@ -72,7 +69,7 @@ class Motors:
                 self.target_speeds[motor.name] = default_speed
 
         self.worker_startup_timeout_seconds: float = 5.0
-        self.start()
+        self._start()
 
     ###############################################################################
     # CAN
@@ -263,7 +260,7 @@ class Motors:
     # Worker (thread)
     ###############################################################################
 
-    def start(self):
+    def _start(self):
         # Get initial positions, start target, and check for offset.
         for key, motor in self.motors.items():
             if motor.allow_comms:
@@ -458,26 +455,28 @@ class Motors:
 # Main / Entry - For Testing
 ###############################################################################
 if __name__ == "__main__":
-    motors = Motors(allow_enable=True)
-    motors.start()
 
-    test = 1
+    # See motor_list.py to select motors and to enable comms
+    motors = Motors(allow_enable=True)
+    motors.enable_all_motors()
+
+    test = 0
     print(f"Starting motor test: {test}")
 
     try:
         if test == 0:
             while True:
-                print(motors.motors["FLA"].position_degrees)
+                print(motors.motors[MotorName.BASE].position_degrees)
                 sleep(0.100)
 
         elif test == 1:
             motors.enable_all_motors()
             while True:
-                motors.set_motor_targets(motor_name="FLA", speed=2000, position=90)
+                motors.set_motor_targets(motor_name=MotorName.BASE, speed=2000, position=90)
                 # motor_set_0.set_motor_targets(motor_tag="FLH", speed=1500, angle=90)
                 # motor_set_0.set_motor_targets(motor_tag="FLK", speed=1000, angle=90)
                 sleep(2)
-                motors.set_motor_targets(motor_name="FLA", speed=2000, position=180)
+                motors.set_motor_targets(motor_name=MotorName.BASE, speed=2000, position=180)
                 # motor_set_0.set_motor_targets(motor_tag="FLH", speed=1500, angle=180)
                 # motor_set_0.set_motor_targets(motor_tag="FLK", speed=1000, angle=180)
                 sleep(2)

@@ -10,17 +10,10 @@ fi
 if [ -f ".venv/bin/activate" ]; then
     echo "Activating virtual environment..."
 else
-    echo "Virtual environment activation script not found." >&2
+    echo "Virtual environment activation script not found!" >&2
     exit 1
 fi
 source .venv/bin/activate
-
-if [ -f "./main.py" ]; then
-    echo "Starting main..."
-else
-    echo "Main script not found." >&2
-    exit 1
-fi
 
 # Source .env variables as user (not sudo).
 if [ -f ".env" ]; then
@@ -28,9 +21,16 @@ if [ -f ".env" ]; then
     source .env
     set +a
 else
-    echo ".env file not found." >&2
+    echo ".env file not found!" >&2
     exit 1
 fi
 
 # Run the main app and pass through arguments.
+if [ -f "./main.py" ]; then
+    echo "Starting main..."
+else
+    echo "Main script not found!" >&2
+    exit 1
+fi
+
 exec python3 main.py "$@"

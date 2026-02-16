@@ -1,29 +1,22 @@
 # EYE
 
-This code creates the eye graphics and controls the stepper driver board.
+This code creates the eye graphic and controls the motors.
 
 Executed on the Raspbery Pi 4.
 
 ## Hardware
 
-  Raspberry Pi 4 B with 4MB RAM (but 2MB will likely work as well).
+  Raspberry Pi 4 B with 4MB RAM (but 2MB will likely work).
 - https://www.raspberrypi.com/products/raspberry-pi-4-model-b/
 
 Waveshare 4inch DSI LCD
+- https://www.waveshare.com/4inch-dsi-lcd-c.htm
 - https://www.waveshare.com/wiki/4inch_DSI_LCD_(C)
 
-Waveshare POE Hat
-- https://www.waveshare.com/poe-hat-e.htm
-- https://www.waveshare.com/poe-hat-c.htm
 
 Waveshare RS485 CAN Hat
-- https://www.waveshare.com/wiki/2-CH_CAN_HAT
-
-Custom stepper driver board containing ESP32-S3 and two TMC2209 drivers
- - /aEyes/pcb/stepper-driver/
-- /aEyes/firmware/stepper-driver
-
-
+- https://www.waveshare.com/rs485-can-hat.htm
+- http://www.waveshare.com/wiki/RS485_CAN_HAT
 
 
 ## Installation
@@ -45,7 +38,7 @@ Do not set hostname.
 
 Boot the Pi.
 
-Copy over SSH keys
+Copy over SSH keys from development PC
 
 ```bash
 ssh-copy-id pi@192.168.1.<200+<EYE_ID>>
@@ -77,10 +70,10 @@ git clone git@github.com:reubenstr/aEyes.git
 Run the setup.sh script to complete the following:
 
 - Selects EYE_ID (user selected)
-- Configs the RPi firmware (overlays)
+- Configs the RPi firmware (overlays for LCD and CAN)
 - Creates virtual environment
 - Adds EYE_ID to .env
-- Adds dev vars to user's .bashrc
+- Adds dev env vars to user's .bashrc
 - Installs Python dependancies
 - Enables low power mode
 - Sets the desktop background image
@@ -89,56 +82,22 @@ Run the setup.sh script to complete the following:
 - Configures ethernet static IP
 
 
-
-
-
-sudo apt install -y python3-dev libgl1-mesa-dev libx11-dev
-
-pip install pyglet moderngl PyOpenGL vispy
-pip install pyzmq
-pip install pipreqs
-pip3 install RPi.GPIO pyserial
-
-
-
-for VSCODE GLSL Lint extension:
-sudo apt install -y glslang-tools
-
-
-Store one local to start GUI applications on remote (RPI):
-export DISPLAY=:0
-export XAUTHORITY=/home/pi/.Xauthority
-python3 ./main.py
-
-
-### Environment
-
-
-sudo hostnamectl set-hostname <new-hostname>
-
-
 ## Manual execution
 
-Eyes:
+### Eyes:
 
+ENV vars required to start GUI on RPI over SSH:
+
+```bash
+export DISPLAY=:0
+export XAUTHORITY=/home/pi/.Xauthority
+```
+
+main.sh loads the virtual environment then starts the main script
 ```
 cd aEyes/eyes
 sudo ./main.sh
 ```
-
-
-## Debugging
-
-Check serial ports: 
-
-```
-ls -al /dev/ttyAMA*
-```
-
-
-TMC2208
-
-https://github.com/bigtreetech/BIGTREETECH-TMC2208-V3.0
 
 
 ### Misc Resources
@@ -146,23 +105,18 @@ https://github.com/bigtreetech/BIGTREETECH-TMC2208-V3.0
 RPI4 UART Pins: https://pragmaticaddict.com/raspi-5-serial-ports.html
 
 
-
-
-
-### Misc Setup, under test
+### Misc. Commands Under Test
 
 
 TEMP:
 echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 echo 600000 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
 
-
 MORE:
 
 sudo ip link set can0 up type can bitrate 1000000
 sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
-
 
 sudo ip link set can1 up type can bitrate 1000000
 sudo ifconfig can1 txqueuelen 65536

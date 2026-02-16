@@ -1,22 +1,19 @@
-import zmq
-import struct
 import os
-from pathlib import Path
+import zmq
+import json
+import struct
 from eye_renderer import EyeRenderer
 from threading import Thread, Event, Lock
-from pathlib import Path
 from time import sleep
 from utilities import crc16_ccitt
-import serial
+
 from interfaces import ControlMessage
-import json
+from motors.interfaces import MotorName, MotorSpeeds
+from motors.motors import Motors
+
 
 SOCKET_ADDRESS = "192.168.1.145"
 SOCKET_PORT = 9000
-
-SERIAL_PORT = "/dev/ttyAMA0"
-SERIAL_BAUD = 115200
-
 
 class Eye:
     def __init__(self):
@@ -30,14 +27,6 @@ class Eye:
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
         self.eye_renderer.set_message('info', 'Waiting for data.')
-
-    def init_serial(self):
-        try:
-            self.ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
-            print(f"[Main] Serial port opened on device: {SERIAL_PORT}, baud: {SERIAL_BAUD}")
-        except serial.SerialException as e:
-            print(f"[Main] Failed to open serial port: {e}")
-            self.ser = None
 
     def init_socket(self):
         context = zmq.Context()
@@ -53,6 +42,12 @@ class Eye:
             self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")
         else:    
             self.eye_id = int(eye_id)
+
+    def init_motors(self):
+        self.motors = Motors(allow_enable=True)
+        self.motors.enable_all_motors()
+        self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
+        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
 
     ###############################################################################
     # Thread
@@ -74,7 +69,6 @@ class Eye:
         self.exit_event.clear()
 
         while not self.exit_event.is_set():
-
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -90,9 +84,10 @@ class Eye:
                         self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
                         self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
                         self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
-                        self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)   
+                        self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
 
-                        self.send_driver_message(msg.motor_enable, msg.position_0, msg.position_1)
+                        self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
+                        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
                        
                 except zmq.Again:
                     # No message available.
@@ -105,10 +100,10 @@ class Eye:
     ###############################################################################
 
     def run(self):
-        self.init_eye_renderer()
-        self.init_serial()
+        self.init_eye_renderer()    
         self.init_socket()
         self.init_local()
+        self.init_motors()
         self.start()
 
         # Blocking
@@ -120,23 +115,7 @@ class Eye:
             self.stop()
         except Exception:
             pass
-
-    ###############################################################################
-    # Messages out
-    ###############################################################################
-    def send_driver_message(self, enable: bool, position_0: float, position_1: float) -> bytes:
-
-        command_data = struct.pack("<Bff", int(enable), position_0, position_1)
-
-        crc = crc16_ccitt(command_data)
-        crc_bytes = struct.pack("<H", crc)
-        packet = command_data + crc_bytes
-
-        if self.ser:
-            self.ser.write(packet)
-
-        return packet
-
+ 
 
 ###############################################################################
 # Main Entry
