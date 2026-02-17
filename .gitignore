@@ -437,3 +437,6 @@ __pycache__/
 .eggs/
 build/
 dist/
+
+# Drawio
+*.bkp
