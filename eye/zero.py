@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import sys
 import time
-import math
 import threading
 from typing import List
 
@@ -12,16 +11,15 @@ from prompt_toolkit.layout.containers import HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
-from hardware.hardware import Hardware
 from motors.motors import Motors
 from motors.interfaces import MotorZeroInfo
 
 """
     This script creates an interface to zero the position of the motors.
-
 """
 
 motors = Motors(allow_enable=False)
+motors.enable_all_motors()
 
 num_motors = 2
 motor_infos: List[MotorZeroInfo] = []
@@ -83,7 +81,6 @@ def get_motor_line(i):
             f"| {position:}° | {motor_id:2} | {motor_name:4} | {can_id} | {zeroed}",
         ),
     ]
-
 
 motor_windows = [
     Window(

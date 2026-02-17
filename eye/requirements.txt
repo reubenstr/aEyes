@@ -21,3 +21,4 @@ vispy==0.16.1
 yarg==0.1.10
 rich==14.1.0
 python-can==4.5.0
+prompt_toolkit==3.0.51
