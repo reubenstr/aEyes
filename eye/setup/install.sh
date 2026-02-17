@@ -25,7 +25,7 @@ ROOT_DIR="$(pwd -P)"
 # -----------------------------------------------------------------------------
 # Prompt for EYE_ID
 printf "Enter EYE_ID (1 through 6): "
-read EYE_ID
+read -r EYE_ID
 
 case "$EYE_ID" in
     ''|*[!0-9]*)
@@ -34,10 +34,16 @@ case "$EYE_ID" in
         ;;
 esac
 
-if [ "$EYE_ID" -lt 1 ] || [ "$EYE_ID" -gt 6 ]; then
-    echo "EYE_ID must be between 1 and 6"
+if ! [[ "$EYE_ID" =~ ^[1-6]$ ]]; then
+    echo "EYE_ID must be an integer between 1 and 6"
     exit 1
 fi
+
+# -----------------------------------------------------------------------------
+# Set the hostname
+NEW_HOSTNAME="eye${EYE_ID}"
+hostnamectl set-hostname "$NEW_HOSTNAME"
+sed -i "s/^127.0.1.1.*/127.0.1.1    $NEW_HOSTNAME/" /etc/hosts
 
 # -----------------------------------------------------------------------------
 # Update firmare config:

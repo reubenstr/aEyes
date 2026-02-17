@@ -29,37 +29,37 @@ SD creation tool:
 - https://www.raspberrypi.com/software/
 
 Use the Raspberry Pi creation tool and apply OS customization with the following:
-- Username/password
-- Wifi credentials
+- Hostname: eye<EYE_ID> (e.g: eye1, eye2, eye3...)
+- Username/password: pi/pi
+- Wifi credentials 
 - Locale settings
 - Enable SSH
 
-Do not set hostname.
-
 Boot the Pi.
 
-Copy over SSH keys from development PC
-
+Copy the controller's SSH keys to the RPi:
 ```bash
-ssh-copy-id pi@192.168.1.<200+<EYE_ID>>
+ssh-copy-id pi@eye<200+<EYE_ID>>.local
+```
+
+SSH into the RPi:
+```bash
+ssh pi@eye<200+<EYE_ID>>.local
 ```
 
 Update the system:
-
 ```bash
 sudo apt update
 sudo apt full-upgrade
 ```
 
 Setup dependencies:
-
 ```bash
 sudo apt install -y python3-venv
 pip install --upgrade pip
 ```
 
 Clone the repo in the home directory:
-
 ```bash
 cd ~
 git clone jetson@192.168.1.200:~/git-remotes/aEyes.git
@@ -67,9 +67,15 @@ git clone jetson@192.168.1.200:~/git-remotes/aEyes.git
 
 ### Script Installation
 
-Run the setup.sh script to complete the following:
+Run the setup.sh script:
+```bash
+cd ~/aEyes/setup
+sudo ./install.sh
+```
 
+The script completes the following actions:
 - Selects EYE_ID (user selected)
+- sets the hostname
 - Configs the RPi firmware (overlays for LCD and CAN)
 - Creates virtual environment
 - Adds EYE_ID to .env
@@ -118,6 +124,3 @@ sudo ip link set can0 up type can bitrate 1000000
 sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
 
-sudo ip link set can1 up type can bitrate 1000000
-sudo ifconfig can1 txqueuelen 65536
-sudo ifconfig can1 up
