@@ -62,7 +62,7 @@ Clone the repo in the home directory:
 
 ```bash
 cd ~
-git clone git@github.com:reubenstr/aEyes.git
+git clone jetson@192.168.1.200:~/git-remotes/aEyes.git
 ```
 
 ### Script Installation

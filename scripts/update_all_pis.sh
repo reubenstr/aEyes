@@ -26,9 +26,6 @@ REMOTE_URL="${MAIN_USER}@${MAIN_HOST}:${MIRROR_REPO_PATH}"
 PING_TIMEOUT_SECS=1
 SSH_TIMEOUT_SECS=5
 
-OK=()
-OFFLINE=()
-FAILED=()
 
 for HOST in "${HOSTS[@]}"; do
   TARGET="${USER_NAME}@${HOST}"
@@ -36,35 +33,13 @@ for HOST in "${HOSTS[@]}"; do
 
   # Check if remote is online
   if ! ping -c 1 -W "$PING_TIMEOUT_SECS" "$HOST" >/dev/null 2>&1; then
-    echo "OFFLINE"
-    OFFLINE+=("$HOST")
+    echo "OFFLINE"    
     continue
   fi
 
   # Check if remote has ssh connectivity
   if ! ssh -o BatchMode=yes -o ConnectTimeout="$SSH_TIMEOUT_SECS" "$TARGET" "true" >/dev/null 2>&1; then
-    echo "OFFLINE/UNREACHABLE"
-    OFFLINE+=("$HOST")
-    continue
-  fi
-
-  # Check if repo directory exists
-  if ! ssh "$TARGET" "[ -d \"\$HOME/$REPO_DIR_REL\" ]"; then
-    # Clone if missing
-    if ssh "$TARGET" "mkdir -p \"\$HOME/src\" && git clone \"$REMOTE_URL\" \"\$HOME/$REPO_DIR_REL\""; then
-      echo "CLONED"
-      OK+=("$HOST")
-    else
-      echo "FAILED (clone)"
-      FAILED+=("$HOST")
-    fi
-    continue
-  fi
-
-  # Check if directory is a git repo
-  if ! ssh "$TARGET" "[ -d \"\$HOME/$REPO_DIR_REL/.git\" ]"; then
-    echo "FAILED (not a git repo)"
-    FAILED+=("$HOST")
+    echo "OFFLINE/UNREACHABLE"   
     continue
   fi
 
@@ -74,17 +49,10 @@ for HOST in "${HOSTS[@]}"; do
         git checkout $BRANCH && \
         git reset --hard origin/$BRANCH && \
         git clean -fd"; then
-    echo "OK"
-    OK+=("$HOST")
+    echo "OK"   
   else
-    echo "FAILED (update)"
-    FAILED+=("$HOST")
+    echo "FAILED (update)"   
   fi
 
 done
 
-echo
-echo "===== SUMMARY ====="
-echo "OK (${#OK[@]}):      ${OK[*]:-none}"
-echo "OFFLINE (${#OFFLINE[@]}): ${OFFLINE[*]:-none}"
-echo "FAILED (${#FAILED[@]}):  ${FAILED[*]:-none}"
