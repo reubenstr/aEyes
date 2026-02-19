@@ -1,4 +1,11 @@
+# Mechanical
 
+
+3D printed parts from PETG:
+https://www.amazon.com/dp/B0FG3HMCVY
+
+
+Frame: 2020 extrusion European Standard
 
 
 ## Bolts

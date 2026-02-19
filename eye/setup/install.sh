@@ -47,8 +47,7 @@ sed -i "s/^127.0.1.1.*/127.0.1.1    $NEW_HOSTNAME/" /etc/hosts
 
 # -----------------------------------------------------------------------------
 # Update firmare config:
-# Reduce clocks
-# Setup LCD and CAN
+# Reduce clocks, setup LCD, and setup CAN
 CFG="/boot/firmware/config.txt"
 
 sudo tee "$CFG" >/dev/null <<'EOF'
