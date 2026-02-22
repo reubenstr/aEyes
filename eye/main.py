@@ -5,7 +5,6 @@ import struct
 from eye_renderer import EyeRenderer
 from threading import Thread, Event, Lock
 from time import sleep
-from utilities import crc16_ccitt
 
 from interfaces import ControlMessage
 from motors.interfaces import MotorName, MotorSpeeds
@@ -39,7 +38,7 @@ class Eye:
         print(f"[Main] Socket requested at address: {address}")
 
     def init_local(self):      
-        print("[Main] init local variables")
+        print("[Main] initialize local variables")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
             self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")
@@ -47,11 +46,11 @@ class Eye:
             self.eye_id = int(eye_id)
 
     def init_motors(self):
-        print("[Main] init motors")
-        self.motors = Motors(allow_enable=True)
+        print("[Main] initialize motors")
+        self.motors = Motors(allow_enable=True)     
         self.motors.enable_all_motors()
         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
-        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
+        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)  
         sleep(3)
 
     ###############################################################################
@@ -90,7 +89,7 @@ class Eye:
                         self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
                         self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
                         self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
-
+                     
                         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
                         self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
                        
@@ -117,6 +116,7 @@ class Eye:
     def shutdown(self):
         try:
             self.eye_renderer.window.close()
+            self.motors.shutdown()
             self.stop()
         except Exception:
             pass

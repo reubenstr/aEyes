@@ -47,8 +47,8 @@ class Motor:
         self,
         name: MotorName,
         motor_id: int,
-        min_angle: float,
-        max_angle: float,
+        min_position: float,
+        max_position: float,
         inverse_rotation: bool,
         allow_comms: bool,
         allow_motion: bool,
@@ -57,8 +57,8 @@ class Motor:
     ):
         self.name: MotorName = name
         self.motor_id: int = motor_id
-        self.min_angle: float = min_angle
-        self.max_angle: float = max_angle
+        self.min_position: float = min_position
+        self.max_position: float = max_position
         self.inverse_rotation: bool = inverse_rotation
         self.allow_comms: bool = allow_comms
         self.allow_motion: bool = allow_motion
@@ -152,6 +152,12 @@ class Motor:
             self.enabled = False
         return success
 
+    def cmd_motor_stop(self):
+        if not self.op_can_send_message(self.motor_id, [0x81, 0, 0, 0, 0, 0, 0, 0]):
+            return False
+        reply = self.op_wait_for_reply()
+        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET  
+
     def cmd_clear_motor_errors(self):
         if not self.op_can_send_message(self.motor_id, [0x9B, 0, 0, 0, 0, 0, 0, 0]):
             return False
@@ -168,14 +174,14 @@ class Motor:
         """
         Sets PID parameters to RAM; invalid upon power cycle.
         """
-        if not self.op_can_send_message(self.motor_id, [0x31, 0, angle_kp, angle_ki, speed_kp, speed_ki, iq_kp, iq_ki]):
-            return False
-        reply = self.op_wait_for_reply()
+        if not self.op_can_send_message(self.motor_id, [0x34, 0, angle_kp, angle_ki, speed_kp, speed_ki, iq_kp, iq_ki]):
+            print("[Motor] failed to send pid to motor!")   
+        reply = self.op_wait_for_reply()        
         return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
 
     def cmd_set_angle_and_speed(
         self,
-        angle: float,
+        position: float,
         speed: int,
     ):
         """
@@ -183,14 +189,15 @@ class Motor:
         Datasheet named as: cmd_motor_multi_angle_2
         """
 
-        angle = angle * -1.0 if self.inverse_rotation else angle
+        position = position * -1.0 if self.inverse_rotation else position
+        position = max(self.min_position, min(self.max_position, position))
 
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF
-        angle_byte_0 = int(angle * 1000.0) >> 0 & 0x000000FF
-        angle_byte_1 = int(angle * 1000.0) >> 8 & 0x000000FF
-        angle_byte_2 = int(angle * 1000.0) >> 16 & 0x000000FF
-        angle_byte_3 = int(angle * 1000.0) >> 24 & 0x000000FF
+        angle_byte_0 = int(position * 1000.0) >> 0 & 0x000000FF
+        angle_byte_1 = int(position * 1000.0) >> 8 & 0x000000FF
+        angle_byte_2 = int(position * 1000.0) >> 16 & 0x000000FF
+        angle_byte_3 = int(position * 1000.0) >> 24 & 0x000000FF
         if not self.op_can_send_message(self.motor_id, [0xA4, 0, speed_low_byte, speed_high_byte, angle_byte_0, angle_byte_1, angle_byte_2, angle_byte_3]):
             return False
         reply = self.op_wait_for_reply()
@@ -216,6 +223,8 @@ class Motor:
                         print(
                             f"{self.tag }[M{reply_motor_id}] angle_kp: {self.angle_kp}, angle_ki: {self.angle_ki}, speed_kp: {self.speed_kp}, speed_ki: {self.speed_ki}, iq_kp: {self.iq_kp}, iq_ki: {self.iq_ki}"
                         )
+                    return True
+            return False
 
     def req_state_1(self):
         if self.op_can_send_message(self.motor_id, [0x9A, 0, 0, 0, 0, 0, 0, 0]):

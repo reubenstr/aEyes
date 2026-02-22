@@ -28,8 +28,8 @@ class MotorInfo:
     name: MotorName
     can_channel: str
     id: int
-    min_angle: float
-    max_angle: float
+    min_position: float
+    max_position: float
     inverse_rotation: bool
     allow_motion: bool
     allow_comms: bool

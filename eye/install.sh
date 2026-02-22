@@ -235,5 +235,5 @@ echo "Run this command to see live logs: sudo journalctl -u main.service -f"
 # -----------------------------------------------------------------------------
 # Complete
 echo ""
-echo "Setup complete."
+echo "Install complete."
 echo "A reboot is required for some updates to take effect!"

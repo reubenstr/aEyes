@@ -57,8 +57,8 @@ class Motors:
                 self.motors[motor.name] = Motor(
                     name=motor.name,
                     motor_id=motor.id,
-                    min_angle=motor.min_angle,
-                    max_angle=motor.max_angle,
+                    min_position=motor.min_position,
+                    max_position=motor.max_position,
                     inverse_rotation=motor.inverse_rotation,
                     allow_comms=motor.allow_comms,
                     allow_motion=motor.allow_motion,
@@ -68,7 +68,7 @@ class Motors:
                 self.target_positions[motor.name] = 0  # Will be set during enable.
                 self.target_speeds[motor.name] = default_speed
 
-        self.worker_startup_timeout_seconds: float = 5.0
+        self.worker_startup_timeout_seconds: float = 5.0    
         self._start()
 
     ###############################################################################
@@ -106,6 +106,7 @@ class Motors:
                 can_info.status = Status.ERROR
                 continue
 
+            sleep(1)     
             can_info.status = Status.ACTIVE
 
     def deinit_can_buses(self, can_infos: Dict[str, CanInfo]):
@@ -195,13 +196,18 @@ class Motors:
     def set_pid_all_motors(self):
         start = time()
         self.acquire_can_locks()
+        success = True
         for motor_tag, motor in self.motors.items():
-            if not motor.cmd_set_pid_to_ram(motor.angle_pid_kp, motor.angle_pid_ki, motor.speed_pid_kp, motor.speed_pid_ki, motor.iq_pid_kp, motor.iq_pid_ki):
-                print(f"[{self.tag}][ALL] set all motor PIDs failed!")
-                self.release_can_locks()
-                return False
-        print(f"[{self.tag}][ALL] set all motor PIDs completed, time: {time() - start:0.3f}")
+            if not motor.cmd_set_pid_to_ram(motor.angle_pid_kp, motor.angle_pid_ki, motor.speed_pid_kp, motor.speed_pid_ki, motor.iq_pid_kp, motor.iq_pid_ki):               
+                success = False
+                print(f"[{self.tag}][ALL] set motor PIDs failed for {motor.name}!")  
+
         self.release_can_locks()
+        if not success:
+            print(f"[{self.tag}][ALL] set all motor PIDs failed!")
+            return False  
+
+        print(f"[{self.tag}][ALL] set all motor PIDs completed, time: {time() - start:0.3f}")      
         return True
 
     """def is_all_motor_angles_within_range(self, tolerance: float):
@@ -260,7 +266,9 @@ class Motors:
     # Worker (thread)
     ###############################################################################
 
-    def _start(self):
+    def _start(self):    
+        self.set_pid_all_motors()     
+
         # Get initial positions, start target, and check for offset.
         for key, motor in self.motors.items():
             if motor.allow_comms:
@@ -268,8 +276,6 @@ class Motors:
                 if motor.position_degrees > 180.0:
                     motor.set_apply_position_offset(True)
                 self.target_positions[key] = motor.position_degrees
-
-        self.set_pid_all_motors()
 
         print(f"[{self.tag}] starting motor worker threads")
         if not all(can_info.status == Status.ACTIVE for can_info in self.can_infos.values()):
@@ -302,7 +308,7 @@ class Motors:
 
                     with can_info.lock:
                         if motor.allow_motion and motor.is_enabled():
-                            motor.cmd_set_angle_and_speed(angle=target_angle, speed=target_speed)                           
+                            motor.cmd_set_angle_and_speed(position=target_angle, speed=target_speed)                           
                             motor.req_position()
                             if rotation % 2 == 0:
                                 motor.req_state_1()
@@ -315,7 +321,7 @@ class Motors:
                             if rotation % 2 == 1:
                                 motor.req_state_2()
 
-                        motor.angle_limit_breached = True if motor.position_degrees < motor.min_angle or motor.position_degrees > motor.max_angle else False
+                        motor.angle_limit_breached = True if motor.position_degrees < motor.min_position or motor.position_degrees > motor.max_position else False
 
             delta = time() - loop_time
 
@@ -387,8 +393,8 @@ class Motors:
         for motor in self.motors.values():
             state = {}
             state["id"] = motor.motor_id
-            state["minAngle"] = motor.min_angle
-            state["maxAngle"] = motor.max_angle
+            state["minAngle"] = motor.min_position
+            state["maxAngle"] = motor.max_position
             state["inverseRotation"] = motor.inverse_rotation
             state["allowComms"] = motor.allow_comms
             state["allowMotion"] = motor.allow_motion
