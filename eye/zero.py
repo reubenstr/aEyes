@@ -161,6 +161,7 @@ def _(event):
     clear_screen()
     print("Shutting down...")
     exit_event.set()
+    time.sleep(2)
     motors.shutdown()   
     event.app.exit()
 

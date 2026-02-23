@@ -70,7 +70,7 @@ class Controller:
           
             yaw = ((math.sin(t) + 1) / 2) * 90 - 45
             pitch = ((math.sin(t) + 1) / 2) * 90 - 45
-                        
+                                  
             messages = []
             for i in range(6):
                 messages.append(
@@ -89,7 +89,8 @@ class Controller:
             message_list = [asdict(m) for m in messages]
             message_str = json.dumps(message_list)
             self.socket.send_string(message_str)
-            print("Sent:", message_str)
+            # print("Sent:", message_str)
+
                 
             time.sleep(1 / REFRESH_RATE_HZ)  
             

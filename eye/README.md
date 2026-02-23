@@ -13,7 +13,6 @@ Waveshare 4inch DSI LCD
 - https://www.waveshare.com/4inch-dsi-lcd-c.htm
 - https://www.waveshare.com/wiki/4inch_DSI_LCD_(C)
 
-
 Waveshare RS485 CAN Hat
 - https://www.waveshare.com/rs485-can-hat.htm
 - http://www.waveshare.com/wiki/RS485_CAN_HAT
