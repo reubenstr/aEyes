@@ -137,6 +137,13 @@ https://huggingface.co/crj/dl-ws/blob/8f8ec345154a161633d8294fd5e21908c97d7f8a/s
   --fp16 \
   --workspace=2048
 
+/usr/src/tensorrt/bin/trtexec \
+    --onnx=scrfd_2.5g.onnx \
+  --shapes=input.1:1x3x480x480 \
+  --saveEngine=face_480_fp16.engine \
+  --fp16 \
+  --memPoolSize=workspace:2048 
+
 -------------
 
 
