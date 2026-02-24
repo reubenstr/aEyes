@@ -111,6 +111,35 @@ Test camera using the Realsense Viewer GUI:
 realsense-viewer
 ```
 
+Install dependencies
+
+```bash
+sudo apt-get update
+sudo apt-get install python3-pip libopenblas-base libopenmpi-dev
+sudo apt-get install libomp-dev
+```
+
+
+----------------
+
+sudo apt-get update
+
+python3 -m pip install --upgrade pip setuptools wheel
+pip3 install numpy==1.23.5
+python3 -m pip install cuda-python
+
+https://huggingface.co/crj/dl-ws/blob/8f8ec345154a161633d8294fd5e21908c97d7f8a/scrfd_2.5g.onnx
+
+/usr/src/tensorrt/bin/trtexec \
+  --onnx=scrfd_2.5g.onnx \
+  --shapes=input.1:1x3x640x640 \
+  --saveEngine=face_fp16.engine \
+  --fp16 \
+  --workspace=2048
+
+-------------
+
+
 
 
 ### MISC
@@ -125,8 +154,16 @@ pip install --upgrade pip
 
 pip install pyzmq
 
+sudo chown -R nvidia:nvidia /home/nvidia/aEyes/controller/.venv
 
 
+
+(.venv) nvidia@ubuntu:~/aEyes/controller/tests$ nvcc --version
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2022 NVIDIA Corporation
+Built on Sun_Oct_23_22:16:07_PDT_2022
+Cuda compilation tools, release 11.4, V11.4.315
+Build cuda_11.4.r11.4/compiler.31964100_0
 
 
 
