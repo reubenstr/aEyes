@@ -27,6 +27,7 @@ Fixes applied vs. original:
 from __future__ import annotations
 
 import time
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -59,7 +60,6 @@ Z_MAX_M = 10.0
 PRINT_EVERY_N_FRAMES = 30
 PRINT_TOP_K = 3
 
-# Timeout (ms) for RealSense wait_for_frames — prevents infinite hang on USB issues.
 RS_FRAME_TIMEOUT_MS = 5000
 # ----------------------------------------------------------
 
@@ -143,7 +143,11 @@ class FaceDetectorTRTSCRFDBoxesOnly:
     def _allocate_io(self):
         stream = self._check_cuda(cudart.cudaStreamCreate())
 
-        in_idx = [i for i in range(self.engine.num_bindings) if self.engine.binding_is_input(i)][0]
+        in_idx = [
+            i
+            for i in range(self.engine.num_bindings)
+            if self.engine.binding_is_input(i)
+        ][0]
         self.context.set_binding_shape(in_idx, (1, 3, self.input_h, self.input_w))
 
         bindings = [0] * self.engine.num_bindings
@@ -158,7 +162,9 @@ class FaceDetectorTRTSCRFDBoxesOnly:
             n = int(np.prod(shape))
             nbytes = n * np.dtype(dtype).itemsize
             if nbytes <= 0:
-                raise RuntimeError(f"Invalid binding size for {i} {name}: shape={shape}")
+                raise RuntimeError(
+                    f"Invalid binding size for {i} {name}: shape={shape}"
+                )
 
             host = np.empty(n, dtype=dtype)
             dptr = self._check_cuda(cudart.cudaMalloc(nbytes))
@@ -199,16 +205,18 @@ class FaceDetectorTRTSCRFDBoxesOnly:
         """
         h, w = frame_bgr.shape[:2]
         if w < self.input_w or h < self.input_h:
-            raise ValueError(f"Frame too small: {w}x{h} for crop {self.input_w}x{self.input_h}")
+            raise ValueError(
+                f"Frame too small: {w}x{h} for crop {self.input_w}x{self.input_h}"
+            )
 
         x0 = (w - self.input_w) // 2
         y0 = (h - self.input_h) // 2
-        roi = frame_bgr[y0:y0 + self.input_h, x0:x0 + self.input_w]
+        roi = frame_bgr[y0 : y0 + self.input_h, x0 : x0 + self.input_w]
 
         rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
         x = rgb.astype(np.float32) * (1.0 / 255.0)
         x = np.transpose(x, (2, 0, 1))  # CHW
-        x = np.expand_dims(x, axis=0)   # NCHW
+        x = np.expand_dims(x, axis=0)  # NCHW
         return np.ascontiguousarray(x), x0, y0
 
     # ---------------- Decode + NMS (boxes only) ----------------
@@ -247,7 +255,9 @@ class FaceDetectorTRTSCRFDBoxesOnly:
                 A = N // loc
                 if A in (1, 2, 4, 6):
                     return s, fh, fw, A
-        raise RuntimeError(f"Could not infer stride for N={N} at {self.input_w}x{self.input_h}")
+        raise RuntimeError(
+            f"Could not infer stride for N={N} at {self.input_w}x{self.input_h}"
+        )
 
     @staticmethod
     def _make_centers(fh, fw, stride, A):
@@ -298,7 +308,7 @@ class FaceDetectorTRTSCRFDBoxesOnly:
     def _decode_all(self, level_outputs):
         all_boxes = []
         all_scores = []
-        for (sc, bx) in level_outputs:
+        for sc, bx in level_outputs:
             b, s = self._decode_level_topk(sc, bx)
             if b.shape[0]:
                 all_boxes.append(b)
@@ -325,38 +335,51 @@ class FaceDetectorTRTSCRFDBoxesOnly:
         np.copyto(self._in_host.reshape(-1), inp.reshape(-1))
 
         # H2D input
-        self._check_cuda(cudart.cudaMemcpyAsync(
-            self._in_dptr, self._in_host, self._in_nbytes,
-            cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, self.stream
-        ))
+        self._check_cuda(
+            cudart.cudaMemcpyAsync(
+                self._in_dptr,
+                self._in_host,
+                self._in_nbytes,
+                cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+                self.stream,
+            )
+        )
 
-        ok = self.context.execute_async_v2(bindings=self.bindings, stream_handle=self.stream)
+        ok = self.context.execute_async_v2(
+            bindings=self.bindings, stream_handle=self.stream
+        )
         if not ok:
             raise RuntimeError("execute_async_v2 returned False")
 
         # D2H ONLY scores+boxes (skip keypoints bindings)
-        for (si, bi) in self.output_groups:
+        for si, bi in self.output_groups:
             sc = self._by_index[si]
             bx = self._by_index[bi]
 
-            self._check_cuda(cudart.cudaMemcpyAsync(
-                sc["host"], sc["dptr"], sc["nbytes"],
-                cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, self.stream
-            ))
-            self._check_cuda(cudart.cudaMemcpyAsync(
-                bx["host"], bx["dptr"], bx["nbytes"],
-                cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, self.stream
-            ))
+            self._check_cuda(
+                cudart.cudaMemcpyAsync(
+                    sc["host"],
+                    sc["dptr"],
+                    sc["nbytes"],
+                    cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+                    self.stream,
+                )
+            )
+            self._check_cuda(
+                cudart.cudaMemcpyAsync(
+                    bx["host"],
+                    bx["dptr"],
+                    bx["nbytes"],
+                    cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+                    self.stream,
+                )
+            )
 
-        # FIX: Synchronize BEFORE reading host buffers.
-        # Previously the sync happened after building level_outputs from host
-        # views, meaning numpy arrays could have been read before the async
-        # D2H copies completed — yielding stale or partial data.
         self._check_cuda(cudart.cudaStreamSynchronize(self.stream))
 
         # Build level output views only after the stream has been fully flushed.
         level_outputs = []
-        for (si, bi) in self.output_groups:
+        for si, bi in self.output_groups:
             sc = self._by_index[si]
             bx = self._by_index[bi]
             sc_view = sc["host"].reshape(sc["shape"])
@@ -408,8 +431,6 @@ class RealSenseD435XYZ:
 
         # Warm up
         for _ in range(10):
-            # FIX: use timeout on warm-up frames too, to avoid hanging if the
-            # camera is slow to stabilize after start().
             self.pipeline.wait_for_frames(timeout_ms=RS_FRAME_TIMEOUT_MS)
 
         self._intr: Optional[rs.intrinsics] = None
@@ -418,9 +439,6 @@ class RealSenseD435XYZ:
         self.pipeline.stop()
 
     def get_aligned_frames(self):
-        # FIX: Pass a timeout so this call does not block indefinitely when the
-        # D435 USB connection is interrupted or the device is slow to deliver
-        # frames.  Returns (None, None, None) on timeout rather than hanging.
         try:
             frames = self.pipeline.wait_for_frames(timeout_ms=RS_FRAME_TIMEOUT_MS)
         except RuntimeError as exc:
@@ -442,7 +460,9 @@ class RealSenseD435XYZ:
 
         return color, depth, self._intr
 
-    def _robust_z_m(self, depth_u16: np.ndarray, bbox_xyxy: np.ndarray) -> Optional[float]:
+    def _robust_z_m(
+        self, depth_u16: np.ndarray, bbox_xyxy: np.ndarray
+    ) -> Optional[float]:
         x1, y1, x2, y2 = [int(v) for v in bbox_xyxy]
         h, w = depth_u16.shape[:2]
 
@@ -481,7 +501,9 @@ class RealSenseD435XYZ:
 
     @staticmethod
     def _deproject(intr: rs.intrinsics, u: int, v: int, z_m: float):
-        X, Y, Z = rs.rs2_deproject_pixel_to_point(intr, [float(u), float(v)], float(z_m))
+        X, Y, Z = rs.rs2_deproject_pixel_to_point(
+            intr, [float(u), float(v)], float(z_m)
+        )
         return float(X), float(Y), float(Z)
 
     def face_xyz(
@@ -490,10 +512,7 @@ class RealSenseD435XYZ:
         intr: Optional[rs.intrinsics],
         bbox_xyxy: np.ndarray,
     ) -> Optional[Tuple[float, float, float]]:
-        # FIX: Guard against None intrinsics.  This can happen if face_xyz is
-        # called before the first valid color frame has been captured (e.g. the
-        # very first iteration of the loop when get_aligned_frames() returned
-        # None on the previous attempt and _intr has not yet been set).
+
         if intr is None:
             return None
 
@@ -507,16 +526,78 @@ class RealSenseD435XYZ:
         return self._deproject(intr, u, v, z_m)
 
 
+class Detector:
+    def __init__(self):
+        self.cam = RealSenseD435XYZ(
+            w=RS_W,
+            h=RS_H,
+            fps=RS_FPS,
+            roi_inner_frac=ROI_INNER_FRAC,
+            z_min_m=Z_MIN_M,
+            z_max_m=Z_MAX_M,
+        )
+
+        self.det = FaceDetectorTRTSCRFDBoxesOnly(
+            engine_path=ENGINE_PATH,
+            input_w=INPUT_W,
+            input_h=INPUT_H,
+            conf_thresh=CONF_THRESH,
+            nms_iou_thresh=NMS_IOU_THRESH,
+            topk_per_level=TOPK_PER_LEVEL,
+            strides=STRIDES,
+            output_groups=((1, 2), (4, 5), (7, 8)),
+        )
+
+    def get_closest_point(self) -> Optional[Tuple[float, float, float]]:
+        color_bgr, depth_u16, intr = self.cam.get_aligned_frames()
+        if color_bgr is None:
+            return None
+
+        faces = self.det.detect(color_bgr)
+
+        closest_point = None
+        min_dist = float("inf")
+
+        for f in faces:
+            xyz = self.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
+            if xyz is None:
+                continue
+
+            # If it's a single point (x, y, z)
+            if isinstance(xyz[0], (int, float)):
+                points = [xyz]
+            else:
+                points = xyz
+
+            for x, y, z in points:
+                if not all(map(math.isfinite, (x, y, z))):
+                    continue
+
+                dist = math.sqrt(x*x + y*y + z*z)
+
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_point = (x, y, z)
+
+        return closest_point
+ 
+
+    def shutdown(self):
+        self.det.close()
+        self.cam.close()
+
+
+'''
 def main():
     cam = RealSenseD435XYZ(
-        w=RS_W, h=RS_H, fps=RS_FPS,
+        w=RS_W,
+        h=RS_H,
+        fps=RS_FPS,
         roi_inner_frac=ROI_INNER_FRAC,
         z_min_m=Z_MIN_M,
         z_max_m=Z_MAX_M,
     )
 
-    # FIX: Removed accidental double-assignment that created a stray global
-    # variable `FaceDetectorTRTSSCRFDBoxesOnly` (note the extra 'S').
     det = FaceDetectorTRTSCRFDBoxesOnly(
         engine_path=ENGINE_PATH,
         input_w=INPUT_W,
@@ -531,24 +612,6 @@ def main():
     frame_count = 0
     last_t = time.time()
     fps_ema = None
-
-
-    '''
-    RealSense coordinate system
-    +X = right
-    +Y = down
-    +Z = forward
-
-
-
-
-
-    '''
-
-
-    cam_offset_to_origin = (0.0, -0.175, 0.0)
-    eye_offset_to_origin = (-0.330, -0.160, 0.230) 
-
 
     try:
         while True:
@@ -589,3 +652,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''

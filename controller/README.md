@@ -119,6 +119,7 @@ sudo apt-get install python3-pip libopenblas-base libopenmpi-dev
 sudo apt-get install libomp-dev
 ```
 
+pip3 install zmq
 
 ----------------
 

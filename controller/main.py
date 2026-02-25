@@ -6,6 +6,9 @@ from dataclasses import dataclass, asdict
 from interfaces import ControlMessage
 from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to_linear
 
+from conversions import Conversions
+from detector import Detector
+
 
 SOCKET_ADDRESS = '*'
 SOCKET_PORT = 9000
@@ -15,6 +18,9 @@ REFRESH_RATE_HZ = 60
 class Controller:
     def __init__(self):
         self.running = True
+
+        self.detector = Detector()
+        self.conversions = Conversions()
 
         self.init_socket()
 
@@ -32,8 +38,6 @@ class Controller:
     # Main Loop
     ###############################################################################
 
-    def stop(self):
-        self.running = False
 
     def run(self):
         palette = [
@@ -44,8 +48,25 @@ class Controller:
         i = 0
         cycle_duration = 4.0
 
+        yaw = 0.0
+        pitch = 0.0
+
 
         while self.running:
+
+            closest_point = self.detector.get_closest_point()
+            if closest_point is not None:
+                yaw, pitch = self.conversions.realsense_point_to_system(closest_point)          
+
+                bound = 45.0
+                #yaw = max(-bound, min(yaw, bound))
+                #pitch = max(-bound, min(pitch, bound))
+
+                x, y, z = closest_point
+                print(f"Closest point: ({x:.3f}, {y:.3f}, {z:.3f}), "f"Yaw: {yaw:.2f}, Pitch: {pitch:.2f}")
+    
+
+
             t = time.time()
           
             phase = (t / cycle_duration) % len(palette)
@@ -68,8 +89,8 @@ class Controller:
             iris_color = tuple([int(r), int(g), int(b)])
             cornea_color = tuple([255 - int(r), 255-int(g), 255-int(b)])
           
-            yaw = ((math.sin(t) + 1) / 2) * 90 - 45
-            pitch = ((math.sin(t) + 1) / 2) * 90 - 45
+            #yaw = ((math.sin(t) + 1) / 2) * 90 - 45
+            #pitch = ((math.sin(t) + 1) / 2) * 90 - 45
                                   
             messages = []
             for i in range(6):
@@ -95,6 +116,11 @@ class Controller:
             time.sleep(1 / REFRESH_RATE_HZ)  
             
 
+    def shutdown(self):
+        self.running = False
+        self.detector.shutdown()
+
+###############################################################################
 # Main Entry
 ###############################################################################
 if __name__ == "__main__":
@@ -103,3 +129,5 @@ if __name__ == "__main__":
         controller.run()
     except KeyboardInterrupt:
         pass
+    finally:
+        controller.shutdown()
