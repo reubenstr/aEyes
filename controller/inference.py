@@ -532,6 +532,24 @@ def main():
     last_t = time.time()
     fps_ema = None
 
+
+    '''
+    RealSense coordinate system
+    +X = right
+    +Y = down
+    +Z = forward
+
+
+
+
+
+    '''
+
+
+    cam_offset_to_origin = (0.0, -0.175, 0.0)
+    eye_offset_to_origin = (-0.330, -0.160, 0.230) 
+
+
     try:
         while True:
             color_bgr, depth_u16, intr = cam.get_aligned_frames()
