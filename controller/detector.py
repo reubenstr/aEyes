@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Headless D435 face detection + XYZ (NO LANDMARKS anywhere)
 
@@ -553,28 +552,20 @@ class Detector:
         if color_bgr is None:
             return None
 
-        faces = self.det.detect(color_bgr)
-
         closest_point = None
         min_dist = float("inf")
 
-        for f in faces:
+        for f in self.det.detect(color_bgr):
             xyz = self.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
             if xyz is None:
                 continue
 
-            # If it's a single point (x, y, z)
-            if isinstance(xyz[0], (int, float)):
-                points = [xyz]
-            else:
-                points = xyz
+            points = [xyz] if isinstance(xyz[0], (int, float)) else xyz
 
             for x, y, z in points:
-                if not all(map(math.isfinite, (x, y, z))):
+                if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
                     continue
-
-                dist = math.sqrt(x*x + y*y + z*z)
-
+                dist = x*x + y*y + z*z
                 if dist < min_dist:
                     min_dist = dist
                     closest_point = (x, y, z)
@@ -585,71 +576,3 @@ class Detector:
     def shutdown(self):
         self.det.close()
         self.cam.close()
-
-
-'''
-def main():
-    cam = RealSenseD435XYZ(
-        w=RS_W,
-        h=RS_H,
-        fps=RS_FPS,
-        roi_inner_frac=ROI_INNER_FRAC,
-        z_min_m=Z_MIN_M,
-        z_max_m=Z_MAX_M,
-    )
-
-    det = FaceDetectorTRTSCRFDBoxesOnly(
-        engine_path=ENGINE_PATH,
-        input_w=INPUT_W,
-        input_h=INPUT_H,
-        conf_thresh=CONF_THRESH,
-        nms_iou_thresh=NMS_IOU_THRESH,
-        topk_per_level=TOPK_PER_LEVEL,
-        strides=STRIDES,
-        output_groups=((1, 2), (4, 5), (7, 8)),
-    )
-
-    frame_count = 0
-    last_t = time.time()
-    fps_ema = None
-
-    try:
-        while True:
-            color_bgr, depth_u16, intr = cam.get_aligned_frames()
-            if color_bgr is None:
-                continue
-
-            faces = det.detect(color_bgr)
-
-            out = []
-            for f in faces:
-                xyz = cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
-                if xyz is not None:
-                    out.append((f, xyz))
-                    print((f, xyz))
-
-            now = time.time()
-            fps = 1.0 / max(1e-6, now - last_t)
-            last_t = now
-            fps_ema = fps if fps_ema is None else (0.9 * fps_ema + 0.1 * fps)
-
-            frame_count += 1
-            if frame_count % PRINT_EVERY_N_FRAMES == 0:
-                print(f"FPS(EMA): {fps_ema:.1f}  faces_with_xyz: {len(out)}")
-                for i in range(min(PRINT_TOP_K, len(out))):
-                    f, (X, Y, Z) = out[i]
-                    x1, y1, x2, y2 = f.bbox_xyxy
-                    print(
-                        f"  face{i}: score={f.score:.3f} "
-                        f"bbox=({x1:.0f},{y1:.0f})-({x2:.0f},{y2:.0f}) "
-                        f"XYZ=({X:.3f},{Y:.3f},{Z:.3f}) m"
-                    )
-
-    finally:
-        det.close()
-        cam.close()
-
-
-if __name__ == "__main__":
-    main()
-'''

@@ -71,7 +71,7 @@ class Conversions:
         rpy_base_camera_rad = np.deg2rad([0.0, 0.0, 0.0])
 
         # Gimbal mount relative to base (meters)
-        t_base_gimbal_m = np.array([0.100, 0.400, 0.110]) 
+        t_base_gimbal_m = np.array([0.100, -0.400, 0.110]) 
         rpy_base_gimbal_rad = np.deg2rad([0.0, 0.0, 0.0])
 
         R_base_camera = R_from_rpy(*rpy_base_camera_rad)
@@ -111,9 +111,7 @@ class Conversions:
         x, y, z = p_gimbal_m
         yaw_deg = np.degrees(np.arctan2(y, x))
         pitch_deg = np.degrees(np.arctan2(z, np.hypot(x, y)))
-
-        return yaw_deg, pitch_deg
-
+       
 
         if False:
             '''
@@ -126,8 +124,8 @@ class Conversions:
             '''
 
             np.set_printoptions(precision=6, suppress=True)
-            print("T_base_camera:\n", T_base_camera)
-            print("\nT_base_gimbal:\n", T_base_gimbal)
+            #print("T_base_camera:\n", self.T_base_camera)
+            #print("\nT_base_gimbal:\n", self.T_base_gimbal)
 
             print("\np_realsense_m:", p_realsense_m)
             print("p_camera_m:", p_camera_m)
@@ -136,3 +134,5 @@ class Conversions:
 
             print("yaw_deg:  ", yaw_deg)
             print("pitch_deg:", pitch_deg)
+
+        return yaw_deg, pitch_deg
