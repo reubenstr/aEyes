@@ -119,6 +119,7 @@ sudo apt-get install python3-pip libopenblas-base libopenmpi-dev
 sudo apt-get install libomp-dev
 ```
 
+pip3 install zmq
 
 ----------------
 
@@ -139,10 +140,26 @@ https://huggingface.co/crj/dl-ws/blob/8f8ec345154a161633d8294fd5e21908c97d7f8a/s
 
 /usr/src/tensorrt/bin/trtexec \
     --onnx=scrfd_2.5g.onnx \
-  --shapes=input.1:1x3x480x480 \
-  --saveEngine=face_480_fp16.engine \
+  --shapes=input.1:1x3x640x480 \
+  --saveEngine=face_640_480_fp16.engine \
   --fp16 \
   --memPoolSize=workspace:2048 
+
+
+## TEMP TEST
+ /usr/src/tensorrt/bin/trtexec --onnx=scrfd.onnx --verbose
+
+ /usr/src/tensorrt/bin/trtexec --onnx=scrfd.onnx --shapes=input.1:1x3x640x480 \
+ --saveEngine=temp.engine --fp16 --memPoolSize=workspace:2048  
+
+
+ Create custom onnx
+
+https://hub.docker.com/r/hsi1032/insightface/tags
+
+sudo apt install podman-docker
+podman pull docker.io/hsi1032/insightface:pytorch1.13
+
 
 -------------
 
