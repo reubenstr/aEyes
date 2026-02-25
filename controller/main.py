@@ -10,7 +10,7 @@ from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to
 SOCKET_ADDRESS = '*'
 SOCKET_PORT = 9000
 
-REFRESH_RATE_HZ = 60
+REFRESH_RATE_HZ = 15
 
 class Controller:
     def __init__(self):

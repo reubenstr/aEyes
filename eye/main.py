@@ -52,6 +52,16 @@ class Eye:
         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
         self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)  
         sleep(3)
+        return
+
+        while(True):
+            print("GO -")
+            self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=-30)
+            sleep(3)
+            print("GO +")
+            self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=30)
+            sleep(3)
+
 
     ###############################################################################
     # Thread
@@ -90,6 +100,8 @@ class Eye:
                         self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
                         self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
                      
+                        print(msg.yaw)
+
                         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
                         self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
                        
