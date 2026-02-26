@@ -13,6 +13,8 @@ from pyglet.graphics.shader import Shader, ShaderProgram
 class EyeRenderer:
     def __init__(self): 
 
+        self._start_time = time.time()
+
         # Render controls
         self.radius: float = 0.2
         self.rotation_deg: float = 0.0
@@ -58,6 +60,8 @@ class EyeRenderer:
         self.init_geometry()
         self.reload_shaders()
 
+        pyglet.clock.schedule_interval(self._update, 1/60.0)
+    
     ###############################################################################
     # API
     ###############################################################################
@@ -156,6 +160,9 @@ class EyeRenderer:
         if symbol == pyglet.window.key.R:
             self.reload_shaders()       
 
+    def _update(self, dt: float) -> None:
+        self.window.invalid = True
+  
     def _on_draw(self):
         self.window.clear()
 
@@ -169,10 +176,10 @@ class EyeRenderer:
 
         prog = self._program
         prog.use()
-
-        prog["iTime"] = time.time()
+      
+        prog["iTime"] = float(time.time() - self._start_time)
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
-        prog["radius"] = float(self.radius)
+        prog["radius"] = float(-self.radius)
         prog["eyeLidPosition"] = self.eye_lid_position
         prog["rotation"] = float(self.rotation_deg)
         prog["irisColor"] = self.iris_color

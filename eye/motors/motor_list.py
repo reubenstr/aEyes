@@ -29,8 +29,8 @@ def motor_list() -> List[MotorInfo]:
             id=2,
             min_position=-45.0,
             max_position=45.0,
-            inverse_rotation=False,
-            allow_motion=True,
+            inverse_rotation=True,
+            allow_motion=False,
             allow_comms=True,
         ),
     ]

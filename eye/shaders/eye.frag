@@ -106,13 +106,13 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float irisShade = 1.0 - smoothstep(0.22, 0.65, ir);
     col = mix(col, vec3(0.1,0.1,0.1), irisShade);
 
+    // cornea distortion (motion)  
+    a += 0.05*fbm( 20.0*p + vec2(iTime*1.0, iTime*0.7) );
+     
     // cornea splotching
     f = smoothstep( 0.4, 0.9, fbm( vec2(15.0*a,10.0*r) ) );
     col *= 1.0 - 0.5*f;
-
-    // cornea distorion (motion)
-    a += 0.05*fbm( 20.0*p + vec2(iTime, iTime) );
-
+ 
     // cornea
     f = smoothstep( 0.3, 1.0, fbm( vec2(20.0*a,6.0*r) ) );
     col = mix( col, corneaColor, f );
@@ -160,7 +160,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
     float lid = eyelidMask(p, eyeLidPosition);
     float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, eyeLidPosition));
     col *= mix(1.0 - lidShadow, 1.0, lid);
-
+  
     outColor = vec4( col * lid, 1.0 );
 }
 

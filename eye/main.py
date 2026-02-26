@@ -11,7 +11,7 @@ from motors.interfaces import MotorName, MotorSpeeds
 from motors.motors import Motors
 
 
-SOCKET_ADDRESS = "192.168.1.145"
+SOCKET_ADDRESS = "192.168.5.1"
 SOCKET_PORT = 9000
 
 class Eye:
@@ -100,7 +100,7 @@ class Eye:
                         self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
                         self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
                      
-                        print(msg.yaw)
+                        # print(msg.yaw, msg.pitch)
 
                         self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
                         self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)

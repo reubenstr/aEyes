@@ -182,8 +182,8 @@ trap 'echo "Error on line $LINENO: command exited with status $?"' ERR
 
 # -----------------------------------------------------------------------------
 # Configure ethernet with static IP:
-IP_LAST_OCTET=$((200 + EYE_ID))
-ETH_IP="192.168.1.${IP_LAST_OCTET}/24"
+IP_LAST_OCTET=$((100 + EYE_ID))
+ETH_IP="192.168.5.${IP_LAST_OCTET}/24"
 
 echo "Setting Ethernet IP to $ETH_IP"
 
