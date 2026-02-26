@@ -63,15 +63,27 @@ def p_from_homogeneous(p_xyzw: np.ndarray) -> np.ndarray:
     return p_xyzw[0:3] / p_xyzw[3]
 
 
+
+    '''
+        System coordinates:
+            +X → Forward
+            +Y → Left
+            +Z → Up
+            +Yaw → Rotate CCW
+            +Pitch → Rotate up
+    '''
+
 class Conversions:
     def __init__(self):
 
+        # System frame: X+ forward, Y+ left, Z+ up 
+
         # Camera mount relative to base (meters)
-        t_base_camera_m = np.array([-0.100, 0.0, 0.175]) 
+        t_base_camera_m = np.array([0.0, 0.0, 0.180]) 
         rpy_base_camera_rad = np.deg2rad([0.0, 0.0, 0.0])
 
         # Gimbal mount relative to base (meters)
-        t_base_gimbal_m = np.array([0.100, -0.400, 0.110]) 
+        t_base_gimbal_m = np.array([0.50, -0.203, 0.0]) 
         rpy_base_gimbal_rad = np.deg2rad([0.0, 0.0, 0.0])
 
         R_base_camera = R_from_rpy(*rpy_base_camera_rad)
@@ -114,14 +126,7 @@ class Conversions:
        
 
         if False:
-            '''
-            System coordinates:
-                +X → Forward
-                +Y → Left
-                +Z → Up
-                +Yaw → Rotate CCW
-                +Pitch → Rotate up
-            '''
+        
 
             np.set_printoptions(precision=6, suppress=True)
             #print("T_base_camera:\n", self.T_base_camera)

@@ -84,6 +84,12 @@ class Controller:
             iris_color = tuple([int(r), int(g), int(b)])
             cornea_color = tuple([255 - int(r), 255 - int(g), 255 - int(b)])
 
+            ###################################
+            radius = 0
+            rotation_deg = 0
+            eye_lid_position = 1
+            ###################################
+
             # yaw = ((math.sin(t) + 1) / 2) * 90 - 45
             # pitch = ((math.sin(t) + 1) / 2) * 90 - 45
 
@@ -92,7 +98,7 @@ class Controller:
                 messages.append(
                     ControlMessage(
                         radius=radius,
-                        rotation_deg=rotation_deg + i * 10,
+                        rotation_deg=rotation_deg,
                         eye_lid_position=eye_lid_position,
                         iris_color=iris_color,
                         cornea_color=cornea_color,
