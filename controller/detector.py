@@ -1,30 +1,6 @@
-"""
-Headless D435 face detection + XYZ (NO LANDMARKS anywhere)
-
-- FaceDetectorTRTSCRFDBoxesOnly:
-    * TensorRT (cuda-python) execution
-    * Copies ONLY scores+boxes outputs (skips all keypoints/landmarks outputs)
-    * Top-K pruning per feature level before decode + global NMS
-    * Returns bboxes in full color image coords
-
-- RealSenseD435XYZ:
-    * Streams color+depth at same FPS
-    * Aligns depth to color
-    * Computes robust Z from bbox ROI and deprojects bbox center to XYZ (meters)
-
-Tuning knobs:
-  CONF_THRESH, TOPK_PER_LEVEL, PRINT_EVERY_N_FRAMES
-
-Fixes applied vs. original:
-  1. Corrected typo in main(): FaceDetectorTRTSSCRFDBoxesOnly -> clean single assignment.
-  2. Fixed D2H sync ordering: cudaStreamSynchronize now runs BEFORE reading host buffers,
-     preventing reads of stale/partial data from async memcpy.
-  3. Added wait_for_frames() timeout (5 s) to avoid infinite hang on USB hiccup.
-  4. Added _intr None guard in face_xyz() to prevent crash before first valid frame.
-"""
-
 from __future__ import annotations
 
+import argparse
 import time
 import math
 from dataclasses import dataclass
@@ -44,7 +20,7 @@ INPUT_W = 480
 INPUT_H = 480
 
 RS_W = 640
-RS_H = 480
+RS_H = 360
 RS_FPS = 60
 
 CONF_THRESH = 0.55
@@ -197,26 +173,38 @@ class FaceDetectorTRTSCRFDBoxesOnly:
 
     # ---------------- Preprocess ----------------
 
-    def _preprocess_center_crop(self, frame_bgr: np.ndarray):
+    def _preprocess_letterbox(self, frame_bgr: np.ndarray):
         """
-        Center-crop to (input_w, input_h), then BGR->RGB, normalize [0,1], NCHW float32.
-        Returns (inp, x0, y0).
+        Letterbox the frame to (input_w, input_h) while preserving the full
+        width of the source image.  Black bars are added to the top and bottom
+        as needed.  Returns (inp, pad_x, pad_y, scale) where pad_x / pad_y are
+        the pixel offsets of the active image region inside the letterboxed
+        canvas and scale is the uniform scale factor applied.
+
+        Coordinate mapping (letterbox -> original):
+            orig_x = (lbx - pad_x) / scale
+            orig_y = (lby - pad_y) / scale
         """
-        h, w = frame_bgr.shape[:2]
-        if w < self.input_w or h < self.input_h:
-            raise ValueError(
-                f"Frame too small: {w}x{h} for crop {self.input_w}x{self.input_h}"
-            )
+        src_h, src_w = frame_bgr.shape[:2]
 
-        x0 = (w - self.input_w) // 2
-        y0 = (h - self.input_h) // 2
-        roi = frame_bgr[y0 : y0 + self.input_h, x0 : x0 + self.input_w]
+        # Fit the source into the network input using the limiting dimension.
+        scale = min(self.input_w / src_w, self.input_h / src_h)
+        new_w = int(round(src_w * scale))
+        new_h = int(round(src_h * scale))
 
-        rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Create a black canvas and paste the resized image centered.
+        canvas = np.zeros((self.input_h, self.input_w, 3), dtype=np.uint8)
+        pad_x = (self.input_w - new_w) // 2
+        pad_y = (self.input_h - new_h) // 2
+        canvas[pad_y : pad_y + new_h, pad_x : pad_x + new_w] = resized
+
+        rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         x = rgb.astype(np.float32) * (1.0 / 255.0)
-        x = np.transpose(x, (2, 0, 1))  # CHW
-        x = np.expand_dims(x, axis=0)  # NCHW
-        return np.ascontiguousarray(x), x0, y0
+        x = np.transpose(x, (2, 0, 1))   # CHW
+        x = np.expand_dims(x, axis=0)    # NCHW
+        return np.ascontiguousarray(x), pad_x, pad_y, scale
 
     # ---------------- Decode + NMS (boxes only) ----------------
 
@@ -329,8 +317,20 @@ class FaceDetectorTRTSCRFDBoxesOnly:
 
     # ---------------- Public API ----------------
 
-    def detect(self, frame_bgr: np.ndarray) -> List[FaceDetection]:
-        inp, x0, y0 = self._preprocess_center_crop(frame_bgr)
+    def detect(self, frame_bgr: np.ndarray) -> Tuple[List[FaceDetection], np.ndarray]:
+        """
+        Returns (detections, letterboxed_bgr).
+        letterboxed_bgr is the 480x480 canvas used for inference — useful for
+        debug display when you want to visualize boxes in network coordinates.
+        Bounding boxes in FaceDetection are already mapped back to the original
+        frame coordinate space.
+        """
+        inp, pad_x, pad_y, scale = self._preprocess_letterbox(frame_bgr)
+
+        # Keep a uint8 copy of the letterbox canvas for optional display.
+        lb_canvas = (inp[0].transpose(1, 2, 0) * 255.0).clip(0, 255).astype(np.uint8)
+        lb_canvas = cv2.cvtColor(lb_canvas, cv2.COLOR_RGB2BGR)
+
         np.copyto(self._in_host.reshape(-1), inp.reshape(-1))
 
         # H2D input
@@ -385,15 +385,19 @@ class FaceDetectorTRTSCRFDBoxesOnly:
             bx_view = bx["host"].reshape(bx["shape"])
             level_outputs.append((sc_view, bx_view))
 
-        boxes_crop, scores = self._decode_all(level_outputs)
+        boxes_lb, scores = self._decode_all(level_outputs)
 
+        # Map letterbox coords → original frame coords.
         dets: List[FaceDetection] = []
-        for i in range(boxes_crop.shape[0]):
-            b = boxes_crop[i].copy()
-            b[[0, 2]] += x0
-            b[[1, 3]] += y0
+        src_h, src_w = frame_bgr.shape[:2]
+        for i in range(boxes_lb.shape[0]):
+            b = boxes_lb[i].copy()
+            # Undo padding then undo scale.
+            b[[0, 2]] = np.clip((b[[0, 2]] - pad_x) / scale, 0, src_w - 1)
+            b[[1, 3]] = np.clip((b[[1, 3]] - pad_y) / scale, 0, src_h - 1)
             dets.append(FaceDetection(score=float(scores[i]), bbox_xyxy=b))
-        return dets
+
+        return dets, lb_canvas
 
 
 class RealSenseD435XYZ:
@@ -441,7 +445,6 @@ class RealSenseD435XYZ:
         try:
             frames = self.pipeline.wait_for_frames(timeout_ms=RS_FRAME_TIMEOUT_MS)
         except RuntimeError as exc:
-            # wait_for_frames raises RuntimeError on timeout.
             print(f"[WARN] wait_for_frames timed out or failed: {exc}")
             return None, None, None
 
@@ -525,6 +528,31 @@ class RealSenseD435XYZ:
         return self._deproject(intr, u, v, z_m)
 
 
+def _draw_detections(
+    frame_bgr: np.ndarray,
+    dets: List[FaceDetection],
+    xyzs: List[Optional[Tuple[float, float, float]]],
+) -> np.ndarray:
+    """Draw bounding boxes (and optional XYZ labels) onto a copy of frame_bgr."""
+    out = frame_bgr.copy()
+    for det, xyz in zip(dets, xyzs):
+        x1, y1, x2, y2 = det.bbox_xyxy.astype(int)
+        cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        label = f"{det.score:.2f}"
+        if xyz is not None:
+            label += f"  {xyz[0]:.2f},{xyz[1]:.2f},{xyz[2]:.2f}m"
+
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        ty = max(y1 - 4, th + 2)
+        cv2.rectangle(out, (x1, ty - th - 2), (x1 + tw + 2, ty + 2), (0, 255, 0), -1)
+        cv2.putText(
+            out, label, (x1 + 1, ty),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA,
+        )
+    return out
+
+
 class Detector:
     def __init__(self):
         self.cam = RealSenseD435XYZ(
@@ -552,10 +580,12 @@ class Detector:
         if color_bgr is None:
             return None
 
+        dets, _ = self.det.detect(color_bgr)
+
         closest_point = None
         min_dist = float("inf")
 
-        for f in self.det.detect(color_bgr):
+        for f in dets:
             xyz = self.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
             if xyz is None:
                 continue
@@ -565,14 +595,101 @@ class Detector:
             for x, y, z in points:
                 if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
                     continue
-                dist = x*x + y*y + z*z
+                dist = x * x + y * y + z * z
                 if dist < min_dist:
                     min_dist = dist
                     closest_point = (x, y, z)
 
         return closest_point
- 
+
+    def run_display(self):
+        """Blocking loop: capture → detect → display with bounding boxes. Press q to quit."""
+        window_name = "Face Detector"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+        frame_idx = 0
+        fps = 0.0
+        fps_alpha = 0.1  # EMA smoothing factor
+        t_last = time.perf_counter()
+
+        try:
+            while True:
+                color_bgr, depth_u16, intr = self.cam.get_aligned_frames()
+                if color_bgr is None:
+                    continue
+
+                dets, _ = self.det.detect(color_bgr)
+
+                xyzs: List[Optional[Tuple[float, float, float]]] = []
+                for f in dets:
+                    xyzs.append(self.cam.face_xyz(depth_u16, intr, f.bbox_xyxy))
+
+                vis = _draw_detections(color_bgr, dets, xyzs)
+
+                # --- FPS overlay ---
+                t_now = time.perf_counter()
+                instant_fps = 1.0 / max(t_now - t_last, 1e-9)
+                t_last = t_now
+                fps = fps + fps_alpha * (instant_fps - fps) if frame_idx > 0 else instant_fps
+
+                fps_label = f"FPS: {fps:.1f}"
+                (fw, fh), _ = cv2.getTextSize(fps_label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+                cv2.rectangle(vis, (8, 8), (8 + fw + 6, 8 + fh + 8), (0, 0, 0), -1)
+                cv2.putText(
+                    vis, fps_label, (11, 8 + fh + 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2, cv2.LINE_AA,
+                )
+
+                cv2.imshow(window_name, vis)
+
+                frame_idx += 1
+                if frame_idx % PRINT_EVERY_N_FRAMES == 0:
+                    print(f"[frame {frame_idx}] {len(dets)} face(s) detected  FPS={fps:.1f}")
+                    for i, (f, xyz) in enumerate(zip(dets[:PRINT_TOP_K], xyzs[:PRINT_TOP_K])):
+                        print(f"  [{i}] score={f.score:.3f}  xyz={xyz}")
+
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+        finally:
+            cv2.destroyAllWindows()
 
     def shutdown(self):
         self.det.close()
         self.cam.close()
+
+
+# ------------------------------------------------------------------ #
+#  CLI entry-point                                                     #
+# ------------------------------------------------------------------ #
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="RealSense + TRT face detector")
+    p.add_argument(
+        "--display",
+        action="store_true",
+        default=False,
+        help="Open an OpenCV window showing the live stream with bounding boxes.",
+    )
+    return p.parse_args()
+
+
+def main():
+    args = _parse_args()
+    detector = Detector()
+    try:
+        if args.display:
+            detector.run_display()
+        else:
+            # Headless loop — just print closest face.
+            frame_idx = 0
+            while True:
+                pt = detector.get_closest_point()
+                frame_idx += 1
+                if frame_idx % PRINT_EVERY_N_FRAMES == 0:
+                    print(f"[frame {frame_idx}] closest={pt}")
+    finally:
+        detector.shutdown()
+
+
+if __name__ == "__main__":
+    main()
