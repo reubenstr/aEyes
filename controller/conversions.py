@@ -82,9 +82,12 @@ class Conversions:
         t_base_camera_m = np.array([0.0, 0.0, 0.180]) 
         rpy_base_camera_rad = np.deg2rad([0.0, 0.0, 0.0])
 
-        # Gimbal mount relative to base (meters)
+        # Gimbal YAW pivot relative to base (meters)
         t_base_gimbal_m = np.array([0.50, -0.203, 0.0]) 
         rpy_base_gimbal_rad = np.deg2rad([0.0, 0.0, 0.0])
+
+        # Pitch pivot relative to yaw pivot (meters)      
+        self.t_yaw_to_pitch_m = np.array([0.106, 0.0, 0.0])
 
         R_base_camera = R_from_rpy(*rpy_base_camera_rad)
         R_base_gimbal = R_from_rpy(*rpy_base_gimbal_rad)
@@ -94,40 +97,66 @@ class Conversions:
 
 
     def realsense_point_to_system(self, p_realsense_m: np.ndarray):   
-        # RealSense point (meters)
-        # p_realsense_m = np.array([0.0, 0.0, 1.0], dtype=float)
+        
+        '''# TEMP TEMP TEMP
+        # Point 0.700m forward of base in base frame
+        p_base_target = np.array([0.700, 0.0, 0.0])
+        # Back-project to realsense frame for testing
+        # p_base = T_base_camera @ p_camera  =>  p_camera = T_base_camera^-1 @ p_base
+        p_camera_target = p_from_homogeneous(
+            T_inverse(self.T_base_camera) @ p_to_homogeneous(p_base_target)
+        )
+        # Then convert camera frame to realsense optical frame
+        p_realsense_m = np.array([
+            -p_camera_target[1],   # X_rs = -Y_system
+            -p_camera_target[2],   # Y_rs = -Z_system
+            p_camera_target[0]    # Z_rs =  X_system
+        ])
+        '''# TEMP TEMP TEMP
 
-        # Convert RealSense optical frame
-        # (X right, Y down, Z forward)
-        # to system frame
-        # (X forward, Y left, Z up)
+        # RealSense optical -> system/camera frame
+        # RealSense: X+ right, Y+ down, Z+ forward
+        # System frame: X+ forward, Y+ left, Z+ up
         p_camera_m = np.array([
-            p_realsense_m[2],        # X_system =  Z_rs
-            -p_realsense_m[0],       # Y_system = -X_rs
-            -p_realsense_m[1]        # Z_system = -Y_rs
+            p_realsense_m[2],
+            -p_realsense_m[0],
+            -p_realsense_m[1]
         ], dtype=float)
-
+    
         # camera -> base
         p_base_m = p_from_homogeneous(
             self.T_base_camera @ p_to_homogeneous(p_camera_m)
         )
 
-        # base -> gimbal
+        # base -> yaw pivot frame
         T_gimbal_base = T_inverse(self.T_base_gimbal)
-
-        p_gimbal_m = p_from_homogeneous(
+        p_yaw_m = p_from_homogeneous(
             T_gimbal_base @ p_to_homogeneous(p_base_m)
         )
 
-        # point gimbal to realsense point
-        x, y, z = p_gimbal_m
-        yaw_deg = np.degrees(np.arctan2(y, x))
-        pitch_deg = np.degrees(np.arctan2(z, np.hypot(x, y)))
-       
+        # --- YAW: computed at yaw pivot origin ---
+        x_base, y_base, _ = p_base_m
+        gimbal_y = self.T_base_gimbal[1, 3]  # -0.203
 
-        if False:
-        
+        yaw_deg = np.degrees(np.arctan2(y_base - gimbal_y, x_base))
+        # --- PITCH: computed at pitch pivot origin ---
+        # 1. Rotate the point by -yaw to bring it into the yaw-rotated frame     
+        R_yaw = R_from_rpy(0.0, 0.0, np.radians(yaw_deg))  # Rz(yaw)
 
+        # 2. Translate from yaw pivot to pitch pivot (arm offset, in yaw-rotated frame)
+        p_yaw_rotated = R_yaw.T @ p_yaw_m          # point in yaw-aligned frame
+        p_pitch_m = p_yaw_rotated - self.t_yaw_to_pitch_m  # shift origin to pitch pivot
+
+        # 3. Pitch angle from pitch pivot
+        px, py, pz = p_pitch_m
+        pitch_deg = np.degrees(np.arctan2(pz, np.hypot(px, py)))
+
+        print("p_camera_m:", p_camera_m)
+        print("p_base_m:  ", p_base_m)
+        print("p_yaw_m:   ", p_yaw_m)
+        print("yaw_deg:   ", yaw_deg)
+      
+        if False: 
             np.set_printoptions(precision=6, suppress=True)
             #print("T_base_camera:\n", self.T_base_camera)
             #print("\nT_base_gimbal:\n", self.T_base_gimbal)

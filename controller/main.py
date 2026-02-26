@@ -88,6 +88,10 @@ class Controller:
             radius = 0
             rotation_deg = 0
             eye_lid_position = 1
+
+
+            iris_color = tuple([0, 157, 0])
+            #cornea_color = tuple([0, 157, 0])
             ###################################
 
             # yaw = ((math.sin(t) + 1) / 2) * 90 - 45
