@@ -166,6 +166,17 @@ podman pull docker.io/hsi1032/insightface:pytorch1.13
 
 
 
+sudo nmcli con mod "Wired connection 1" \
+  ipv4.method manual \
+  ipv4.addresses 192.168.1.200/24 \
+  ipv4.gateway "" \
+  ipv4.dns "" \
+  ipv4.never-default yes
+
+
+
+
+
 ### MISC
 
 sudo apt install -y python3-venv
