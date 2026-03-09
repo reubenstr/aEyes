@@ -83,6 +83,13 @@ class Eye:
         self.exit_event.clear()
 
         while not self.exit_event.is_set():
+            self.eye_renderer.set_message('', '')
+            self.eye_renderer.set_radius(.8)
+            self.eye_renderer.set_rotation_deg(0)
+            self.eye_renderer.set_eye_lid_position(.8)
+            self.eye_renderer.set_iris_color_rgb255((255, 0, 0,))
+            self.eye_renderer.set_cornea_color_rgb255((255, 0, 0))
+            self.eye_renderer.set_is_cat_eye(False)               
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -119,7 +126,7 @@ class Eye:
         self.init_eye_renderer()    
         self.init_socket()
         self.init_local()
-        self.init_motors()
+        # self.init_motors()
         self.start()
 
         # Blocking
