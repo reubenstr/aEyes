@@ -3,10 +3,10 @@ import math
 import random
 import time
 
-
-from data_types import Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates
+from data_types import Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
 from colors import COLOR_POOL, GREY
-
+from conversions import Conversions
+from eye_assignment import EyeAssignmentManager
 
 class EyeManager:
     """
@@ -22,14 +22,19 @@ class EyeManager:
       and converted to a per-frame factor via 1 - exp(-speed * dt), so
       behaviour is identical regardless of update call rate.
     """
-
-    # How many "units" to close the gap per second.
+    
     # Higher = faster transition.  e.g. 3.0 ≈ 95% complete in ~1 second.
-    COLOR_IN_SPEED  = 3.0   # speed toward a face color
-    COLOR_OUT_SPEED = 1.0   # speed back toward grey (slower so color lingers)
+    COLOR_IN_RATE  = 2.0   # speed toward a face color
+    COLOR_OUT_RATE = 4.0   # speed back toward grey
+    
     BLINK_RATE      = 1.0   # complete blinks per second (1.0 = 1 second per blink)
 
-    def __init__(self, eye_configs: list[EyeConfig]) -> None:
+    def __init__(self, eye_configs: list[EyeConfig]) -> None:  
+        
+        self._assignment_manager = EyeAssignmentManager(eye_configs)      
+        
+        self._conversions = Conversions(eye_configs)
+        
         self._states: dict[EyeId, EyeState] = {
             cfg.eye_id: EyeState(eye_id=cfg.eye_id)
             for cfg in eye_configs
@@ -78,8 +83,8 @@ class EyeManager:
         dt = now - self._last_update
         self._last_update = now
 
-        t_in  = 1.0 - math.exp(-self.COLOR_IN_SPEED  * dt)
-        t_out = 1.0 - math.exp(-self.COLOR_OUT_SPEED * dt)
+        t_in  = 1.0 - math.exp(-self.COLOR_IN_RATE  * dt)
+        t_out = 1.0 - math.exp(-self.COLOR_OUT_RATE * dt)
 
         for state in self._states.values():
             if state.face_id is not None:
@@ -109,15 +114,26 @@ class EyeManager:
             else:
                 state.eye_lid = (elapsed - half) / half   # closed → open
 
+    def _update_orientation(self, tracked_faces: TrackedFaces):
+        """Compute gimbal angles for each eye tracking a face"""
+        for eye_id, state in self._states.items():
+            if state.face_id is not None and state.face_id in tracked_faces:
+                state.yaw, state.pitch = self._conversions.get_pitch_yaw(
+                    eye_id, tracked_faces[state.face_id]
+                )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, assignments: EyeAssignments) -> EyeStates:
+    def update(self, tracked_faces: TrackedFaces) -> EyeStates:
         """Update eye states from the latest eye assignments."""
 
         now = time.monotonic()
 
+        # Assign eyes to faces
+        assignments = self._assignment_manager.update(tracked_faces)
+       
         # Assign a color to any newly seen face_id
         for fid in assignments.values():
             if fid is not None and fid not in self._face_colors:
@@ -140,5 +156,6 @@ class EyeManager:
 
         self._lerp_colors(now)
         self._update_blinks(now)
+        self._update_orientation(tracked_faces)      
 
-        return dict(self._states)  
+        return dict(self._states)

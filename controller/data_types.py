@@ -39,9 +39,8 @@ class EyeAssignmentState:
     # (None means it is currently assigned)
     available_since: float | None = None
 
-
-EyeAssignments = dict[EyeId, FaceId | None]
 TrackedFaces = dict[FaceId, Position3D]
+EyeAssignments = dict[EyeId, FaceId | None]
 
 @dataclass
 class EyeState:
@@ -56,6 +55,8 @@ class EyeState:
     rotation: float = 0.0   # degrees
     eye_lid: float = 1.0    # 0.0 = fully closed, 1.0 = fully open
     is_cat_eye: bool = False
+    yaw: float = 0.0        # degrees
+    pitch: float = 0.0      # degrees
 
 
 # Return type for EyeManager.update()
