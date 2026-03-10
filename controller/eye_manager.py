@@ -61,7 +61,7 @@ class EyeManager:
         return random.choice(available if available else COLOR_POOL)
 
     # ------------------------------------------------------------------
-    # Lerp helper
+    # Helpers
     # ------------------------------------------------------------------
 
     @staticmethod

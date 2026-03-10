@@ -22,12 +22,12 @@ from data_types import Detection, EyeConfig, Position3D
 # ---------------------------------------------------------------------------
 
 EYE_CONFIGS = [
-    EyeConfig(eye_id=0, x= 0.0, y=0.5, z=0.0),
-    EyeConfig(eye_id=1, x= 0.0, y=0.38, z=0.5),
-    EyeConfig(eye_id=2, x= 0.0, y=-0.38, z=0.5),
-    EyeConfig(eye_id=3, x= 0.0, y=-0.5, z=0.0),
-    EyeConfig(eye_id=4, x= 0.0, y=-0.38, z=-0.5),
-    EyeConfig(eye_id=5, x= 0.0, y=0.38, z=-0.5),
+    EyeConfig(eye_id=0, x= 0.0, y=0.4, z=0.0),
+    EyeConfig(eye_id=1, x= 0.0, y=0.2, z=0.346),
+    EyeConfig(eye_id=2, x= 0.0, y=-0.2, z=0.346),
+    EyeConfig(eye_id=3, x= 0.0, y=-0.4, z=0.0),
+    EyeConfig(eye_id=4, x= 0.0, y=-0.2, z=-0.346),
+    EyeConfig(eye_id=5, x= 0.0, y=0.2, z=-0.346),
 ]
 
 NUM_EYES = len(EYE_CONFIGS)
@@ -65,34 +65,34 @@ def _draw_eye_cylinders(ax, eye_configs: list[EyeConfig]):
 def get_detections(frame: int) -> list[Detection]:
     """Return the set of Detection objects for a given frame number.
 
-    All positions stay within: x[0.5, 1.0], y[-0.5, 0.5], z[-0.5, 0.5].
+    All positions stay within: x[1, 3], y[-2.0, 2.0], z[-1.0, 1.0].
     """
     t = frame * 0.05
 
     face_a = Detection(position=Position3D(
-        x=0.65 + 0.08 * math.sin(t),
-        y=0.00 + 0.05 * math.cos(t),
-        z=0.00 + 0.10 * math.sin(t * 0.5),
+        x=1.5 + 0.3 * math.sin(t),
+        y=0.0 + 0.4 * math.cos(t),
+        z=0.0 + 0.3 * math.sin(t * 0.5),
     ))
     face_b = Detection(position=Position3D(
-        x=0.80 + 0.08 * math.cos(t * 0.7),
-        y=0.15 + 0.08 * math.sin(t * 0.9),
-        z=-0.1 + 0.12 * math.sin(t * 0.3),
+        x=2.2 + 0.4 * math.cos(t * 0.7),
+        y=0.8 + 0.5 * math.sin(t * 0.9),
+        z=-0.3 + 0.4 * math.sin(t * 0.3),
     ))
     face_c = Detection(position=Position3D(
-        x=0.55 + 0.04 * math.sin(t * 1.3),
-        y=-0.2 + 0.08 * math.cos(t * 0.6),
-        z=0.20 + 0.10 * math.sin(t * 0.4),
+        x=1.2 + 0.15 * math.sin(t * 1.3),
+        y=-1.0 + 0.5 * math.cos(t * 0.6),
+        z=0.5 + 0.3 * math.sin(t * 0.4),
     ))
     face_d = Detection(position=Position3D(
-        x=0.90 + 0.08 * math.sin(t * 0.8),
-        y=0.00 + 0.10 * math.cos(t * 1.1),
-        z=-0.2 + 0.10 * math.sin(t * 0.7),
+        x=2.7 + 0.25 * math.sin(t * 0.8),
+        y=0.0 + 0.6 * math.cos(t * 1.1),
+        z=-0.5 + 0.3 * math.sin(t * 0.7),
     ))
-    face_new = Detection(position=Position3D(
-        x=0.70 + 0.08 * math.sin(t * 1.5),
-        y=-0.1 + 0.05 * math.cos(t * 1.2),
-        z=0.10 + 0.08 * math.sin(t * 0.8),
+    face_e = Detection(position=Position3D(
+        x=1.8 + 0.3 * math.sin(t * 1.5),
+        y=-0.5 + 0.4 * math.cos(t * 1.2),
+        z=0.2 + 0.3 * math.sin(t * 0.8),
     ))
 
     if frame < 10:
@@ -100,13 +100,13 @@ def get_detections(frame: int) -> list[Detection]:
     elif frame < 20:
         return [face_b, face_c, face_d]
     elif frame < 30:
-        return [face_b, face_c, face_d, face_new]
+        return [face_b, face_c, face_d, face_e]
     elif frame < 40:
-        return [face_b, face_d, face_new]
-    elif frame < 50:
+        return [face_b, face_d, face_e]
+    elif frame < 100:
         return [face_b]
     else:
-        return [face_a, face_c]
+        return [face_a]
 
 
 # ---------------------------------------------------------------------------
@@ -135,10 +135,10 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
     ax.set_zlabel('Z (m)')
-    ax.set_xlim(0.0, 1.0)
-    ax.set_ylim(-0.6, 0.6)
-    ax.set_zlim(-0.6, 1.0)
-    ax.set_box_aspect([1, 1, 1])
+    ax.set_xlim(-0.5, 3.1)
+    ax.set_ylim(-2.1, 2.1)
+    ax.set_zlim(-1.1, 1.1)
+    ax.set_box_aspect([4, 5, 3])  # proportional to axis ranges for 1:1:1 scaling
     _draw_eye_cylinders(ax, EYE_CONFIGS)
 
     ax_eyes = fig.add_axes([0.05, 0.05, 0.90, 0.15])
@@ -171,24 +171,24 @@ def run(num_frames: int = 500, interval_ms: int = 50):
         eye_circles.append(circle)
 
         eye_id_texts.append(ax_eyes.text(
-            cx, CIRCLE_Y, str(i),
+            cx, CIRCLE_Y, 'Eye ID: ' + str(i),
             ha='center', va='center',
             fontsize=9, fontweight='bold', color='white', zorder=3,
         ))
         face_id_texts.append(ax_eyes.text(
             cx, FACE_ID_Y, 'x',
             ha='center', va='center',
-            fontsize=8, color='grey', zorder=3,
+            fontsize=8, color='black', zorder=3,
         ))
         yaw_texts.append(ax_eyes.text(
             cx, YAW_Y, 'Y:--',
             ha='center', va='center',
-            fontsize=7, color='grey', zorder=3,
+            fontsize=7, color='black', zorder=3,
         ))
         pitch_texts.append(ax_eyes.text(
             cx, PITCH_Y, 'P:--',
             ha='center', va='center',
-            fontsize=7, color='grey', zorder=3,
+            fontsize=7, color='black', zorder=3,
         ))
 
     eye_cfg_by_id = {cfg.eye_id: cfg for cfg in EYE_CONFIGS}
@@ -219,7 +219,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             eye_circles[i].set_color(mpl_color)
             eye_circles[i].set_height(CIRCLE_RADIUS * 2 * state.eye_lid)
 
-            label = str(state.face_id) if state.face_id is not None else 'x'
+            label = 'Face ID:' + str(state.face_id) if state.face_id is not None else 'x'
             face_id_texts[i].set_text(label)
 
             brightness = 0.299 * mpl_color[0] + 0.587 * mpl_color[1] + 0.114 * mpl_color[2]
@@ -246,10 +246,11 @@ def run(num_frames: int = 500, interval_ms: int = 50):
         # Draw gaze rays driven by yaw/pitch angles.
         # System coords: +X forward, +Y left, +Z up.
         # Yaw rotates CCW around Z; pitch rotates up from XY plane.
-        RAY_LEN = 1.5
         for eye_id, state in eye_states.items():
-            if state.face_id is not None:
+            if state.face_id is not None and state.face_id in tracked_faces:
                 cfg = eye_cfg_by_id[eye_id]
+                fp  = tracked_faces[state.face_id]
+                ray_len = math.sqrt((fp.x - cfg.x)**2 + (fp.y - cfg.y)**2 + (fp.z - cfg.z)**2)
                 yaw_r   = math.radians(state.yaw)
                 pitch_r = math.radians(state.pitch)
                 dx = math.cos(pitch_r) * math.cos(yaw_r)
@@ -257,9 +258,9 @@ def run(num_frames: int = 500, interval_ms: int = 50):
                 dz = math.sin(pitch_r)
                 mpl_color = _to_mpl_color(state.iris_color)
                 artists['gaze_lines'][eye_id] = ax.plot(
-                    [cfg.x, cfg.x + RAY_LEN * dx],
-                    [cfg.y, cfg.y + RAY_LEN * dy],
-                    [cfg.z, cfg.z + RAY_LEN * dz],
+                    [cfg.x, cfg.x + ray_len * dx],
+                    [cfg.y, cfg.y + ray_len * dy],
+                    [cfg.z, cfg.z + ray_len * dz],
                     color=mpl_color, linewidth=1.5, alpha=0.8,
                 )[0]
 
@@ -280,14 +281,14 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             artists['points'][track_id] = ax.scatter(
                 pos.x, pos.y, pos.z, color='black', s=100, marker='o')
             artists['face_labels'][track_id] = ax.text(
-                pos.x, pos.y, pos.z, f'ID {track_id}',
+                pos.x, pos.y, pos.z + 0.06, f'ID {track_id}',
                 fontsize=8, color='black', ha='center', va='bottom')
 
             if track_id in face_to_eyes:
                 eye_label = 'Eyes: ' + ','.join(map(str, face_to_eyes[track_id]))
                 artists['eye_labels'][track_id] = ax.text(
                     pos.x, pos.y, pos.z - 0.1, eye_label,
-                    fontsize=6, color='black', ha='center', va='top')
+                    fontsize=8, color='black', ha='center', va='top')
 
         ax.set_title(f'Face Tracking + Eye Assignment  —  frame {frame}')
         return (
