@@ -6,9 +6,9 @@ FaceId = int
 
 @dataclass
 class Color:
-    red:   int = 0  # 0 - 255
+    red: int = 0    # 0 - 255
     green: int = 0  # 0 - 255
-    blue:  int = 0  # 0 - 255
+    blue: int = 0   # 0 - 255
 
 @dataclass(frozen=True)
 class Position3D:
@@ -46,16 +46,16 @@ TrackedFaces = dict[FaceId, Position3D]
 @dataclass
 class EyeState:
     """Render state for a single eye."""
-    eye_id:      EyeId
-    iris_color:          Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
-    target_iris_color:   Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
-    striation_color:     Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
+    eye_id: EyeId
+    iris_color: Color = field(default_factory=lambda: Color(128, 128, 128))          # current (lerped) color
+    target_iris_color: Color = field(default_factory=lambda: Color(128, 128, 128))   # target to lerp toward
+    striation_color: Color = field(default_factory=lambda: Color(128, 128, 128))     # current (lerped) color
     target_striation_color: Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
-    face_id:     FaceId | None = None                      # currently assigned face
-    radius:      float = 1.0
-    rotation:    float = 0.0   # degrees
-    eye_lid:     float = 1.0   # 0.0 = fully closed, 1.0 = fully open
-    is_cat_eye:  bool  = False
+    face_id: FaceId | None = None  # currently assigned face
+    radius: float = 1.0
+    rotation: float = 0.0   # degrees
+    eye_lid: float = 1.0    # 0.0 = fully closed, 1.0 = fully open
+    is_cat_eye: bool = False
 
 
 # Return type for EyeManager.update()

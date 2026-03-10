@@ -131,9 +131,9 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     ax_eyes.axis('off')
 
     # Pre-create eye icon artists
-    eye_circles:    list[mpatches.Circle] = []
-    eye_id_texts:   list[plt.Text]        = []
-    face_id_texts:  list[plt.Text]        = []
+    eye_circles:    list[mpatches.Ellipse] = []
+    eye_id_texts:   list[plt.Text]         = []
+    face_id_texts:  list[plt.Text]         = []
 
     CIRCLE_RADIUS = 0.28
     CIRCLE_Y      = 0.55
@@ -141,8 +141,8 @@ def run(num_frames: int = 500, interval_ms: int = 50):
 
     for i in range(NUM_EYES):
         cx = i + 0.5
-        circle = mpatches.Circle(
-            (cx, CIRCLE_Y), CIRCLE_RADIUS,
+        circle = mpatches.Ellipse(
+            (cx, CIRCLE_Y), CIRCLE_RADIUS * 2, CIRCLE_RADIUS * 2,
             color=(0.5, 0.5, 0.5),
             ec='white', linewidth=1.5,
             transform=ax_eyes.transData, zorder=2,
@@ -185,6 +185,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             state     = eye_states[eye_id]
             mpl_color = _to_mpl_color(state.iris_color)
             eye_circles[i].set_color(mpl_color)
+            eye_circles[i].set_height(CIRCLE_RADIUS * 2 * state.eye_lid)
 
             label = str(state.face_id) if state.face_id is not None else 'x'
             face_id_texts[i].set_text(label)
@@ -192,7 +193,6 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             brightness = 0.299 * mpl_color[0] + 0.587 * mpl_color[1] + 0.114 * mpl_color[2]
             text_color = 'black' if brightness > 0.55 else 'white'
             eye_id_texts[i].set_color(text_color)
-            face_id_texts[i].set_color(text_color)
 
         # Rebuild 3D artists
         for group in artists.values():

@@ -11,154 +11,115 @@ in vec2 v_uv;
 out vec4 fragColor;
 
 uniform float iTime;
-uniform vec2  iResolution;
+uniform vec2 iResolution;
 uniform float radius;
-uniform vec3 irisColor;   
-uniform vec3 striationColor;   
-uniform float eyeLidPosition; 
+uniform vec3 irisColor;
+uniform vec3 striationColor;
+uniform float eyeLidPosition;
 uniform bool isCatEye;
 
+// Rotation applied at each fbm octave to avoid axis-aligned artifacts
+const mat2 FBM_ROT = mat2(0.80, 0.60, -0.60, 0.80);
 
-const mat2 m = mat2( 0.80,  0.60, -0.60,  0.80 );
-
-float hash1( float n ) 
-{ 
-    return fract(sin(n)*43758.5453);
+float hash1(float n)
+{
+    return fract(sin(n) * 43758.5453);
 }
 
-float noise( in vec2 x )
+// Value noise with smooth (C1) interpolation
+float noise(vec2 x)
 {
     vec2 i = floor(x);
     vec2 f = fract(x);
-    f = f*f*(3.0-2.0*f);
+    f = f * f * (3.0 - 2.0 * f);
 
-    float n = i.x + i.y*57.0;
-
-    return mix(mix( hash1(n+ 0.0), hash1(n+ 1.0),f.x),
-               mix( hash1(n+57.0), hash1(n+58.0),f.x),f.y);
+    float n = i.x + i.y * 57.0;
+    return mix(mix(hash1(n +  0.0), hash1(n +  1.0), f.x),
+               mix(hash1(n + 57.0), hash1(n + 58.0), f.x), f.y);
 }
 
-float fbm( vec2 p )
+// Fractal Brownian Motion — 5 octaves, normalized to [0, 1]
+float fbm(vec2 p)
 {
     float f = 0.0;
-    f += 0.50000*noise( p ); p = m*p*2.02;
-    f += 0.25000*noise( p ); p = m*p*2.03;
-    f += 0.12500*noise( p ); p = m*p*2.01;
-    f += 0.06250*noise( p ); p = m*p*2.04;
-    f += 0.03125*noise( p );
-    return f/0.984375;
+    f += 0.50000 * noise(p); p = FBM_ROT * p * 2.02;
+    f += 0.25000 * noise(p); p = FBM_ROT * p * 2.03;
+    f += 0.12500 * noise(p); p = FBM_ROT * p * 2.01;
+    f += 0.06250 * noise(p); p = FBM_ROT * p * 2.04;
+    f += 0.03125 * noise(p);
+    return f / 0.984375;
 }
 
-float length2( vec2 p )
-{
-    vec2 q = p*p*p*p;
-    return pow( q.x + q.y, 1.0/4.0 );
-}
-
-// A soft eyelid mask: blinkAmt=1 fully open (round), blinkAmt=0 fully closed.
+// Eyelid mask: 1 = fully open, 0 = fully closed.
+// The open region is a parabolic band — wide at center, pinched at corners.
 float eyelidMask(vec2 p, float blinkAmt)
 {
-    // Fully open: no masking, eye is a perfect circle.
     if (blinkAmt >= 1.0) return 1.0;
 
-    float top = blinkAmt;
-    float bot = blinkAmt;
+    float edge = blinkAmt * (1.0 - p.x * p.x);
 
-    float cornerExtent = 1.0; // >1 pushes corners outward
-
-    float x = p.x / cornerExtent;
-    float x2 = x*x;
-
-    // Parabolic eyelid edge: open at center, pinches at corners.
-    float topEdge = top * (1.0 - x2);
-    float botEdge = bot * (1.0 - x2);
-
-    float inside = 1.0;
-    inside *= smoothstep(topEdge + 0.010, topEdge - 0.010, p.y);
-    inside *= smoothstep(-botEdge - 0.010, -botEdge + 0.010, p.y);
-
-    return inside;
+    return smoothstep(edge + 0.01, edge - 0.01, p.y)
+         * smoothstep(-edge - 0.01, -edge + 0.01, p.y);
 }
 
-void mainImage( out vec4 outColor, in vec2 fragCoord )
+void main()
 {
-    vec2 p = (2.0 *fragCoord - iResolution.xy) / iResolution.y;
+    vec2 fragCoord = v_uv * iResolution;
+
+    // Normalized coords: y-corrected, centered, [-1, 1] range
+    vec2 p = (2.0 * fragCoord - iResolution.xy) / iResolution.y;
     float r = length(p) * (1.0 + radius * clamp(1.0 - length(p), 0.0, 1.0));
-    float a = atan( p.y, p.x );    
- 
-    // iris color
-    vec3 col = irisColor;
-    float f = fbm( 5.0*p );
-    col = mix( col, vec3(0.2,0.5,0.4), f );
+    float a = atan(p.y, p.x);
 
-    // shade around iris, scales with cat eye
-    vec2 irisScale = vec2(isCatEye ? 0.7 : 1.0, 1.0);
-    vec2 iu = abs(p / irisScale);
-    float ikx = isCatEye ? 1.2 : 2.0; // softer than pupil
-    float iky = 2.0;
-    float ir = pow(pow(iu.x, ikx) + pow(iu.y, iky), 1.0 / ikx);
-    float irisShade = 1.0 - smoothstep(0.22, 0.65, ir);
-    col = mix(col, vec3(0.1,0.1,0.1), irisShade);
+    // Iris base color
+    vec3 col = mix(irisColor, vec3(0.2, 0.5, 0.4), fbm(5.0 * p));
 
-    // cornea distortion (motion)  
-    a += 0.05*fbm( 20.0*p + vec2(iTime*1.0, iTime*0.7) );
-     
-    // cornea splotching
-    f = smoothstep( 0.4, 0.9, fbm( vec2(15.0*a,10.0*r) ) );
-    col *= 1.0 - 0.5*f;
- 
-    // cornea
-    f = smoothstep( 0.3, 1.0, fbm( vec2(20.0*a,6.0*r) ) );
-    col = mix( col, striationColor, f );
+    // Iris limbal darkening
+    float ikx = isCatEye ? 1.2 : 2.0;
+    vec2 iu = abs(p / vec2(isCatEye ? 0.7 : 1.0, 1.0));
+    float ir = pow(pow(iu.x, ikx) + pow(iu.y, 2.0), 1.0 / ikx);
+    col = mix(col, vec3(0.1), 1.0 - smoothstep(0.22, 0.65, ir));
 
-    // darkening outer edges
-    col *= 1.0 - 0.25*smoothstep( 0.6,0.8,r );
+    // Striation distortion (slow time-based drift)
+    a += 0.05 * fbm(20.0 * p + vec2(iTime, iTime * 0.7));
 
-    // highlight
-    f = 1.0 - smoothstep(
-        0.0, 0.6,
-        length2( mat2(0.6,0.8,-0.8,0.6) * (p - vec2(0.3,0.5)) * vec2(1.0,2.0) )
-    );
-    // col += vec3(1.0,0.9,0.9)*f*0.985;
+    // Striation splotching
+    float splotch = smoothstep(0.4, 0.9, fbm(vec2(15.0 * a, 10.0 * r)));
+    col *= 1.0 - 0.5 * splotch;
 
-    // shadow
-    col *= vec3(0.8 + 0.2*cos(r*a));
+    // Striation fibers
+    float striation = smoothstep(0.3, 1.0, fbm(vec2(20.0 * a, 6.0 * r)));
+    col = mix(col, striationColor, striation);
 
-    // pupil
+    // Edge darkening
+    col *= 1.0 - 0.25 * smoothstep(0.6, 0.8, r);
+
+    // Radial/angular shadow variation
+    col *= vec3(0.8 + 0.2 * cos(r * a));
+
+    // Pupil
     float center = smoothstep(0.0, 0.4, 1.0 - r);
     float pupilDilate = mix(1.0, 0.6, center * radius);
 
-    vec2 pupilScale = vec2(isCatEye ? 0.5 : 1.0, 1.0);
-    vec2 u = abs(p / pupilScale);
-    float kx = isCatEye ? 1.0 : 2.0; 
-    float ky = 2.0;
-    float pr = pow(pow(u.x, kx) + pow(u.y, ky), 1.0 / kx); 
-    float inner = 0.2  * pupilDilate;
-    float outer = 0.25 * pupilDilate;
-    f = 1.0 - smoothstep(inner, outer, pr);
-    col = mix(col, vec3(0.0), f);
+    float kx = isCatEye ? 1.0 : 2.0;
+    vec2 u = abs(p / vec2(isCatEye ? 0.5 : 1.0, 1.0));
+    float pr = pow(pow(u.x, kx) + pow(u.y, 2.0), 1.0 / kx);
+    float pupil = 1.0 - smoothstep(0.20 * pupilDilate, 0.25 * pupilDilate, pr);
+    col = mix(col, vec3(0.0), pupil);
 
-    // crop to circle with edge blur (sclera color)
-    float edge = 0.8;
-    float blur = 3.0 * fwidth(r); 
-    f = smoothstep(edge - blur, edge + blur, r);
-    //vec3 scleraColor = vec3(0.8, 0.8, 0.8);
-    vec3 scleraColor = vec3(0.0, 0.0, 0.0);
-    col = mix(col, scleraColor, f);
+    // Sclera border: crops iris to a soft circle
+    float blur = 3.0 * fwidth(r);
+    col = mix(col, vec3(0.0), smoothstep(0.8 - blur, 0.8 + blur, r));
 
-    // vignetting
+    // Vignette
     vec2 q = fragCoord / iResolution.xy;
-    col *= 0.5 + 0.5*pow(16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y),0.1);
+    float vignette = pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.1);
+    col *= 0.5 + 0.5 * vignette;
 
-    // Apply eyelid mask + a little lid shadow as it closes
+    // Eyelid mask + cast shadow as it closes
     float lid = eyelidMask(p, eyeLidPosition);
     float lidShadow = mix(0.0, 0.35, smoothstep(0.2, 0.9, eyeLidPosition));
     col *= mix(1.0 - lidShadow, 1.0, lid);
-  
-    outColor = vec4( col * lid, 1.0 );
-}
 
-void main() {
-    vec2 fragCoord = v_uv * iResolution;
-    mainImage(fragColor, fragCoord);
+    fragColor = vec4(col * lid, 1.0);
 }
