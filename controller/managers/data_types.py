@@ -1,5 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
+
+@dataclass
+class Detection:
+    """A single face detection from the camera, with optional embedding for re-ID."""
+    position: Position3D
+    embedding: Optional[Any] = None  # numpy ndarray in practice
 
 EyeId = int
 FaceId = int
@@ -43,9 +49,18 @@ class EyeAssignmentState:
 EyeAssignments = dict[EyeId, list[FaceId]]
 TrackedFaces = dict[FaceId, Position3D]
 
-
 @dataclass
-class Detection:
-    """A single face detection from the camera, with optional embedding for re-ID."""
-    position: Position3D
-    embedding: Optional[Any] = None  # numpy ndarray in practice
+class EyeState:
+    """Render state for a single gimbal eye."""
+    eye_id:      EyeId
+    color:       Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
+    target_color: Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
+    face_ids:    list[FaceId] = field(default_factory=list)  # currently assigned faces
+    radius:      float = 1.0
+    rotation:    float = 0.0   # degrees
+    eye_lid:     float = 0.0   # 0.0 = fully open, 1.0 = fully closed
+    is_cat_eye:  bool  = False
+
+
+# Return type for EyeManager.update()
+EyeStates = dict[EyeId, EyeState]   

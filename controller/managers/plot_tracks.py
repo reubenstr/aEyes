@@ -1,4 +1,3 @@
-
 """
 visualize_tracks.py
 --------------------
@@ -9,6 +8,7 @@ so that wall-clock time drives the rate-limiter correctly.
 
 import math
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import matplotlib.animation as animation
 
 from face_tracker import FaceTracker
@@ -29,6 +29,8 @@ EYE_CONFIGS = [
     EyeConfig(eye_id=4, x= 0.2, y=0.0, z=0.5),
     EyeConfig(eye_id=5, x= 0.3, y=0.0, z=0.5),
 ]
+
+NUM_EYES = len(EYE_CONFIGS)
 
 
 # ---------------------------------------------------------------------------
@@ -81,9 +83,11 @@ def get_detections(frame: int) -> list[Detection]:
     elif frame < 30:
         return [face_b, face_c, face_d, face_new]
     elif frame < 40:
-        return [face_b, face_d, face_new] 
+        return [face_b, face_d, face_new]
+    elif frame < 50:
+        return [face_b]
     else:
-        return [face_b, face_new]
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -91,15 +95,6 @@ def get_detections(frame: int) -> list[Detection]:
 # ---------------------------------------------------------------------------
 
 def run(num_frames: int = 500, interval_ms: int = 50):
-    """
-    Launch the real-time animated plot.
-
-    Parameters
-    ----------
-    num_frames  : total number of frames to animate (0 = loop forever)
-    interval_ms : milliseconds between frames — this is the real wall-clock
-                  interval that the eye rate-limiter runs against.
-    """
     tracker = FaceTracker(
         base_max_distance=0.4,
         depth_scale_factor=0.15,
@@ -114,50 +109,70 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     )
     eye_mgr = EyeManager(eye_configs=EYE_CONFIGS)
 
-    # Per-track position history for trail rendering
     track_history: dict[int, dict[str, list[float]]] = {}
 
-    # face_id → mpl color, persisted so trails keep their color
-    face_colors: dict[int, tuple[float, float, float]] = {}
+    # ---------------------------------------------------------------------------
+    # Figure layout
+    # ---------------------------------------------------------------------------
+    fig = plt.figure(figsize=(10, 8))
 
-    # Figure setup
-    fig = plt.figure(figsize=(12, 8))
-    ax  = fig.add_subplot(111, projection='3d')
+    ax = fig.add_axes([0.05, 0.20, 0.90, 0.70], projection='3d')
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
     ax.set_zlabel('Z (m)')
-
     ax.set_xlim(-0.5, 0.5)
     ax.set_ylim(-0.5, 0.5)
-    ax.set_zlim(-0.5, 1)
+    ax.set_zlim(-0.5, 1.0)
+    ax.set_box_aspect([1, 1, 1])
 
-    # Dictionaries of live artists — cleared and rebuilt each frame
+    ax_eyes = fig.add_axes([0.05, 0.05, 0.90, 0.15])
+    ax_eyes.set_xlim(0, NUM_EYES)
+    ax_eyes.set_ylim(0, 1)
+    ax_eyes.axis('off')
+
+    # Pre-create eye icon artists
+    eye_circles:    list[mpatches.Circle] = []
+    eye_id_texts:   list[plt.Text]        = []
+    face_id_texts:  list[plt.Text]        = []
+
+    CIRCLE_RADIUS = 0.28
+    CIRCLE_Y      = 0.55
+    LABEL_Y       = 0.08
+
+    for i in range(NUM_EYES):
+        cx = i + 0.5
+        circle = mpatches.Circle(
+            (cx, CIRCLE_Y), CIRCLE_RADIUS,
+            color=(0.5, 0.5, 0.5),
+            ec='white', linewidth=1.5,
+            transform=ax_eyes.transData, zorder=2,
+        )
+        ax_eyes.add_patch(circle)
+        eye_circles.append(circle)
+
+        eye_id_texts.append(ax_eyes.text(
+            cx, CIRCLE_Y, str(i),
+            ha='center', va='center',
+            fontsize=9, fontweight='bold', color='white', zorder=3,
+        ))
+        face_id_texts.append(ax_eyes.text(
+            cx, LABEL_Y, 'x',
+            ha='center', va='center',
+            fontsize=8, color='grey', zorder=3,
+        ))
+
     artists: dict[str, dict] = {
-        'lines':         {},
-        'points':        {},
-        'face_labels':   {},
-        'eye_labels': {},
+        'lines':       {},
+        'points':      {},
+        'face_labels': {},
+        'eye_labels':  {},
     }
 
-    frame_counter = [0]
-
-    def animate(_):
-        frame = frame_counter[0]
-        frame_counter[0] += 1
-
-        # Step all three managers
+    def animate(frame):
         dets          = get_detections(frame)
         tracked_faces = tracker.update(dets)
         assignments   = eye_assignment_manager.update(tracked_faces)
         eye_states    = eye_mgr.update(assignments)
-
-        # Build face_id → mpl color from eye states
-        # Each eye's EyeState carries the color for its assigned face
-        for eye_id, state in eye_states.items():
-            face_ids = assignments.get(eye_id, [])
-            mpl_color = _to_mpl_color(state.color)
-            for fid in face_ids:
-                face_colors[fid] = mpl_color
 
         # Build face_id → [eye_ids]
         face_to_eyes: dict[int, list[int]] = {}
@@ -165,13 +180,26 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             for fid in face_ids:
                 face_to_eyes.setdefault(fid, []).append(eye_id)
 
-        # Remove previous frame's artists
+        # Update eye icon strip
+        for i, eye_id in enumerate(sorted(eye_states)):
+            state     = eye_states[eye_id]
+            mpl_color = _to_mpl_color(state.color)
+            eye_circles[i].set_color(mpl_color)
+
+            label = ','.join(str(fid) for fid in state.face_ids) if state.face_ids else 'x'
+            face_id_texts[i].set_text(label)
+
+            brightness = 0.299 * mpl_color[0] + 0.587 * mpl_color[1] + 0.114 * mpl_color[2]
+            text_color = 'black' if brightness > 0.55 else 'white'
+            eye_id_texts[i].set_color(text_color)
+            face_id_texts[i].set_color(text_color)
+
+        # Rebuild 3D artists
         for group in artists.values():
             for artist in group.values():
                 artist.remove()
             group.clear()
 
-        # Draw each confirmed track
         for track_id, pos in tracked_faces.items():
             if track_id not in track_history:
                 track_history[track_id] = {'x': [], 'y': [], 'z': []}
@@ -184,13 +212,10 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             ry = hist['y'][-300:]
             rz = hist['z'][-300:]
 
-            # Use the EyeManager color, falling back to grey if not yet assigned
-            color = face_colors.get(track_id, (0.5, 0.5, 0.5))
-
             artists['lines'][track_id] = ax.plot(
-                rx, ry, rz, color=color, alpha=0.6)[0]
+                rx, ry, rz, color='black', alpha=0.4)[0]
             artists['points'][track_id] = ax.scatter(
-                pos.x, pos.y, pos.z, color=color, s=100, marker='o')
+                pos.x, pos.y, pos.z, color='black', s=100, marker='o')
             artists['face_labels'][track_id] = ax.text(
                 pos.x, pos.y, pos.z, f'ID {track_id}',
                 fontsize=8, color='black', ha='center', va='bottom')
@@ -202,7 +227,12 @@ def run(num_frames: int = 500, interval_ms: int = 50):
                     fontsize=6, color='black', ha='center', va='top')
 
         ax.set_title(f'Face Tracking + Eye Assignment  —  frame {frame}')
-        return [a for group in artists.values() for a in group.values()]
+        return (
+            list(eye_circles)
+            + eye_id_texts
+            + face_id_texts
+            + [a for group in artists.values() for a in group.values()]
+        )
 
     ani = animation.FuncAnimation(
         fig, animate,

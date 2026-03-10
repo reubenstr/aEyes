@@ -4,5 +4,6 @@
     "*.frag": "glsl",
     "*.vert": "glsl",
     "*.glsl": "glsl"
-  }
+  },
+  "tabnine.cloudHost": "https://tabnine.jhuapl.edu"
 }
