@@ -1,11 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional
-
-@dataclass
-class Detection:
-    """A single face detection from the camera, with optional embedding for re-ID."""
-    position: Position3D
-    embedding: Optional[Any] = None  # numpy ndarray in practice
+from typing import Any
 
 EyeId = int
 FaceId = int
@@ -26,7 +20,7 @@ class Position3D:
 
 @dataclass(frozen=True)
 class EyeConfig:
-    """Static configuration for a single gimbal."""
+    """Static configuration for a single eye."""
     eye_id: EyeId
     x: float = 0.0
     y: float = 0.0
@@ -35,32 +29,40 @@ class EyeConfig:
 
 @dataclass
 class EyeAssignmentState:
-    """Runtime state for a single gimbal."""
+    """Runtime state for a single eye."""
     eye_id: EyeId
-   
-    # Which face this gimbal is currently tracking (None = unassigned)
-    assigned_face_id: Optional[FaceId] = None
 
-    # Timestamp when this gimbal became unassigned and entered the available pool
+    # Which face this eye is currently tracking (None = unassigned)
+    assigned_face_id: FaceId | None = None
+
+    # Timestamp when this eye became unassigned and entered the available pool
     # (None means it is currently assigned)
-    available_since: Optional[float] = None
+    available_since: float | None = None
 
 
-EyeAssignments = dict[EyeId, list[FaceId]]
+EyeAssignments = dict[EyeId, FaceId | None]
 TrackedFaces = dict[FaceId, Position3D]
 
 @dataclass
 class EyeState:
-    """Render state for a single gimbal eye."""
+    """Render state for a single eye."""
     eye_id:      EyeId
-    color:       Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
-    target_color: Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
-    face_ids:    list[FaceId] = field(default_factory=list)  # currently assigned faces
+    iris_color:          Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
+    target_iris_color:   Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
+    striation_color:     Color = field(default_factory=lambda: Color(128, 128, 128))  # current (lerped) color
+    target_striation_color: Color = field(default_factory=lambda: Color(128, 128, 128))  # target to lerp toward
+    face_id:     FaceId | None = None                      # currently assigned face
     radius:      float = 1.0
     rotation:    float = 0.0   # degrees
-    eye_lid:     float = 0.0   # 0.0 = fully open, 1.0 = fully closed
+    eye_lid:     float = 1.0   # 0.0 = fully closed, 1.0 = fully open
     is_cat_eye:  bool  = False
 
 
 # Return type for EyeManager.update()
 EyeStates = dict[EyeId, EyeState]   
+
+@dataclass
+class Detection:
+    """A single face detection from the camera, with optional embedding for re-ID."""
+    position: Position3D
+    embedding: Any | None = None  # numpy ndarray in practice

@@ -1,8 +1,8 @@
-from __future__ import annotations
 
 import math
 import random
 import time
+
 
 from data_types import Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates
 from colors import COLOR_POOL, GREY
@@ -11,7 +11,7 @@ from colors import COLOR_POOL, GREY
 class EyeManager:
     """
     Maintains render state (color, radius, rotation, eye_lid, is_cat_eye)
-    for each gimbal eye.
+    for each eye.
 
     Color assignment rules
     ----------------------
@@ -27,6 +27,7 @@ class EyeManager:
     # Higher = faster transition.  e.g. 3.0 ≈ 95% complete in ~1 second.
     COLOR_IN_SPEED  = 3.0   # speed toward a face color
     COLOR_OUT_SPEED = 1.0   # speed back toward grey (slower so color lingers)
+    BLINK_RATE      = 1.0   # complete blinks per second (1.0 = 1 second per blink)
 
     def __init__(self, eye_configs: list[EyeConfig]) -> None:
         self._states: dict[EyeId, EyeState] = {
@@ -36,6 +37,11 @@ class EyeManager:
 
         # face_id → Color, assigned once when a face is first seen
         self._face_colors: dict[FaceId, Color] = {}
+
+        # eye_id → blink start time (None = not blinking)
+        self._blink_starts: dict[EyeId, float | None] = {
+            cfg.eye_id: None for cfg in eye_configs
+        }
 
         self._last_update: float = time.monotonic()
 
@@ -66,45 +72,73 @@ class EyeManager:
             blue= int(current.blue  + (target.blue  - current.blue)  * t),
         )
     
-    def _lerp_colors(self) -> None:
+    def _lerp_colors(self, now: float) -> None:
         """Lerp every eye's current color toward its target."""
 
-        now = time.monotonic()
-        dt  = now - self._last_update
+        dt = now - self._last_update
         self._last_update = now
 
         t_in  = 1.0 - math.exp(-self.COLOR_IN_SPEED  * dt)
         t_out = 1.0 - math.exp(-self.COLOR_OUT_SPEED * dt)
 
         for state in self._states.values():
-            if state.face_ids:
-                state.color = self._lerp_color(state.color, state.target_color, t_in)
+            if state.face_id is not None:
+                state.iris_color = self._lerp_color(state.iris_color, state.target_iris_color, t_in)
+                state.striation_color = self._lerp_color(state.striation_color, state.target_striation_color, t_in)
             else:
-                state.color = self._lerp_color(state.color, GREY, t_out)
+                state.iris_color = self._lerp_color(state.iris_color, GREY, t_out)
+                state.striation_color = self._lerp_color(state.striation_color, GREY, t_out)
+
+    def _update_blinks(self, now: float) -> None:
+        """Animate eye_lid as a blink (open → closed → open) when a new face is assigned."""
+        blink_duration = 1.0 / self.BLINK_RATE
+        half = blink_duration / 2.0
+
+        for eye_id, state in self._states.items():
+            start = self._blink_starts[eye_id]
+            if start is None:
+                state.eye_lid = 1.0
+                continue
+
+            elapsed = now - start
+            if elapsed >= blink_duration:
+                state.eye_lid = 1.0
+                self._blink_starts[eye_id] = None
+            elif elapsed < half:
+                state.eye_lid = 1.0 - (elapsed / half)   # open → closed
+            else:
+                state.eye_lid = (elapsed - half) / half   # closed → open
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def update(self, assignments: EyeAssignments) -> EyeStates:
-        """Update eye states from the latest gimbal assignments."""
-    
+        """Update eye states from the latest eye assignments."""
+
+        now = time.monotonic()
+
         # Assign a color to any newly seen face_id
-        for face_ids in assignments.values():
-            for fid in face_ids:
-                if fid not in self._face_colors:
-                    self._face_colors[fid] = self._pick_unique_color()
+        for fid in assignments.values():
+            if fid is not None and fid not in self._face_colors:
+                self._face_colors[fid] = self._pick_unique_color()
 
-        # Update face assignments and target colors
-        for eye_id, face_ids in assignments.items():
+        # Update face assignments, target colors, and trigger blinks on new assignments
+        for eye_id, face_id in assignments.items():
             state = self._states[eye_id]
-            state.face_ids = list(face_ids)
+            prev_face_id = state.face_id
+            state.face_id = face_id
 
-            if face_ids:
-                state.target_color = self._face_colors[face_ids[0]]
+            if face_id is not None:
+                state.target_iris_color = self._face_colors[face_id]
+                state.target_striation_color = self._face_colors[face_id]
+                if prev_face_id != face_id:
+                    self._blink_starts[eye_id] = now
             else:
-                state.target_color = GREY
+                state.target_iris_color = GREY
+                state.target_striation_color = GREY
 
-        self._lerp_colors()
+        self._lerp_colors(now)
+        self._update_blinks(now)
 
         return dict(self._states)  

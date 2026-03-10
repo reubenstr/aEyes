@@ -1,9 +1,8 @@
 
-from __future__ import annotations
 
 import math
 import time
-from typing import Optional
+
 
 from data_types import (
     FaceId,
@@ -82,8 +81,8 @@ class EyeAssignmentManager:
 
         Returns
         -------
-        EyeAssignments: dict[EyeId, list[FaceId]]
-        Each eye maps to a list of assigned face IDs (empty if unassigned).
+        EyeAssignments: dict[EyeId, FaceId | None]
+        Each eye maps to its assigned face ID, or None if unassigned.
         """
         now = time.monotonic()
 
@@ -115,7 +114,7 @@ class EyeAssignmentManager:
 
         # 6. Return eye → face assignment map
         return {
-            gid: ([g.assigned_face_id] if g.assigned_face_id is not None else [])
+            gid: g.assigned_face_id
             for gid, g in self._eyes.items()
         }
 
@@ -255,13 +254,13 @@ class EyeAssignmentManager:
             if len(face_load[donor_fid]) <= 1:
                 donors.remove(donor_fid)
 
-    def _closest_available_eye(self, face_x: float, face_y: float) -> Optional[EyeId]:
+    def _closest_available_eye(self, face_x: float, face_y: float) -> EyeId | None:
         """
         Return the eye_id from the available pool whose X-Y position
         (from its EyeConfig) is closest to (face_x, face_y).
         Returns None if the pool is empty.
         """
-        best_id: Optional[EyeId] = None
+        best_id: EyeId | None = None
         best_dist = float("inf")
 
         for gid in self._available_pool:

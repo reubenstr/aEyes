@@ -1,8 +1,8 @@
 """
 visualize_tracks.py
 --------------------
-Real-time animated 3D plot of face tracks and gimbal assignments.
-The tracker and gimbal manager are stepped once per animation frame
+Real-time animated 3D plot of face tracks and eye assignments.
+The tracker and eye manager are stepped once per animation frame
 so that wall-clock time drives the rate-limiter correctly.
 """
 
@@ -176,17 +176,17 @@ def run(num_frames: int = 500, interval_ms: int = 50):
 
         # Build face_id → [eye_ids]
         face_to_eyes: dict[int, list[int]] = {}
-        for eye_id, face_ids in assignments.items():
-            for fid in face_ids:
-                face_to_eyes.setdefault(fid, []).append(eye_id)
+        for eye_id, face_id in assignments.items():
+            if face_id is not None:
+                face_to_eyes.setdefault(face_id, []).append(eye_id)
 
         # Update eye icon strip
         for i, eye_id in enumerate(sorted(eye_states)):
             state     = eye_states[eye_id]
-            mpl_color = _to_mpl_color(state.color)
+            mpl_color = _to_mpl_color(state.iris_color)
             eye_circles[i].set_color(mpl_color)
 
-            label = ','.join(str(fid) for fid in state.face_ids) if state.face_ids else 'x'
+            label = str(state.face_id) if state.face_id is not None else 'x'
             face_id_texts[i].set_text(label)
 
             brightness = 0.299 * mpl_color[0] + 0.587 * mpl_color[1] + 0.114 * mpl_color[2]
