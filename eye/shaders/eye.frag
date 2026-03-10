@@ -14,7 +14,7 @@ uniform float iTime;
 uniform vec2  iResolution;
 uniform float radius;
 uniform vec3 irisColor;   
-uniform vec3 corneaColor;   
+uniform vec3 striationColor;   
 uniform float eyeLidPosition; 
 uniform bool isCatEye;
 
@@ -55,29 +55,23 @@ float length2( vec2 p )
     return pow( q.x + q.y, 1.0/4.0 );
 }
 
-// A soft eyelid mask: when blink->1, visible opening narrows to a line.
+// A soft eyelid mask: blinkAmt=1 fully open (round), blinkAmt=0 fully closed.
 float eyelidMask(vec2 p, float blinkAmt)
 {
-    float openness = mix(0.0, 0.8, blinkAmt);
+    // Fully open: no masking, eye is a perfect circle.
+    if (blinkAmt >= 1.0) return 1.0;
 
-    //float top = 0.52 * openness;
-    //float bot = 0.42 * openness;
-    float top = openness;
-    float bot =  openness;
+    float top = blinkAmt;
+    float bot = blinkAmt;
 
     float cornerExtent = 1.0; // >1 pushes corners outward
 
-    // p.x is expected to be normalized so edges are at |x|=1
-    float x = p.x / cornerExtent; //clamp(abs(p.x), 0.0, 1.0);
+    float x = p.x / cornerExtent;
     float x2 = x*x;
 
-    // Make edges hit 0 at x=1 (corners exactly at screen edges)
+    // Parabolic eyelid edge: open at center, pinches at corners.
     float topEdge = top * (1.0 - x2);
     float botEdge = bot * (1.0 - x2);
-
-    // Optional: slightly different shaping for upper/lower lids
-    // topEdge = top * (1.0 - pow(x, 2.2));
-    // botEdge = bot * (1.0 - pow(x, 1.8));
 
     float inside = 1.0;
     inside *= smoothstep(topEdge + 0.010, topEdge - 0.010, p.y);
@@ -115,7 +109,7 @@ void mainImage( out vec4 outColor, in vec2 fragCoord )
  
     // cornea
     f = smoothstep( 0.3, 1.0, fbm( vec2(20.0*a,6.0*r) ) );
-    col = mix( col, corneaColor, f );
+    col = mix( col, striationColor, f );
 
     // darkening outer edges
     col *= 1.0 - 0.25*smoothstep( 0.6,0.8,r );

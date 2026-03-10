@@ -83,13 +83,23 @@ class Eye:
         self.exit_event.clear()
 
         while not self.exit_event.is_set():
-            self.eye_renderer.set_message('', '')
-            self.eye_renderer.set_radius(.8)
-            self.eye_renderer.set_rotation_deg(0)
-            self.eye_renderer.set_eye_lid_position(.8)
-            self.eye_renderer.set_iris_color_rgb255((255, 0, 0,))
-            self.eye_renderer.set_cornea_color_rgb255((255, 0, 0))
-            self.eye_renderer.set_is_cat_eye(False)               
+
+            import time
+            from math import sin
+            while True:
+                now = time.time()
+                self.eye_renderer.set_message('', '')
+                self.eye_renderer.set_radius(.8)
+                self.eye_renderer.set_rotation_deg(0)
+                self.eye_renderer.set_eye_lid_position((sin(now) + 1) / 2)
+                self.eye_renderer.set_eye_lid_position(1)
+                self.eye_renderer.set_iris_color_rgb255((0, 255, 0))
+                self.eye_renderer.set_striation_color_rgb255((0, 0, 0))
+                self.eye_renderer.set_is_cat_eye(False)      
+
+                sleep(0.1)
+
+
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -104,7 +114,7 @@ class Eye:
                         self.eye_renderer.set_rotation_deg(msg.rotation_deg)
                         self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
                         self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
-                        self.eye_renderer.set_cornea_color_rgb255(msg.cornea_color)
+                        self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
                         self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
                      
                         # print(msg.yaw, msg.pitch)
@@ -134,7 +144,7 @@ class Eye:
 
     def shutdown(self):
         try:
-            self.eye_renderer.window.close()
+            self.eye_renderer.shutdown()
             self.motors.shutdown()
             self.stop()
         except Exception:

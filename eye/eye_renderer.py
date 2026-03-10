@@ -20,7 +20,7 @@ class EyeRenderer:
         self.rotation_deg: float = 0.0
         self.eye_lid_position: float = 0.0
         self.iris_color: tuple[float, float, float] = rgb255_srgb_to_linear(0, 255, 0)
-        self.cornea_color: tuple[float, float, float] = rgb255_srgb_to_linear(255, 0, 0)
+        self.striation_color: tuple[float, float, float] = rgb255_srgb_to_linear(255, 0, 0)
         self.is_cat_eye: bool = False
 
         self._program: ShaderProgram | None = None
@@ -35,7 +35,7 @@ class EyeRenderer:
         config.major_version = 3
         config.minor_version = 1
 
-        self.window = pyglet.window.Window(fullscreen=True, resizable=True, config=config)
+        self.window = pyglet.window.Window(fullscreen=False, resizable=True, config=config)
 
         self.pending_text = None
         self.message_label = pyglet.text.Label(
@@ -77,8 +77,8 @@ class EyeRenderer:
     def set_iris_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
         self.iris_color = rgb255_srgb_to_linear(*rgb)
 
-    def set_cornea_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
-        self.cornea_color = rgb255_srgb_to_linear(*rgb)
+    def set_striation_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.striation_color = rgb255_srgb_to_linear(*rgb)
 
     def set_is_cat_eye(self, value: bool) -> None:
         self.is_cat_eye = bool(value)
@@ -93,6 +93,11 @@ class EyeRenderer:
     def run(self) -> None:
         print("[Renderer] running app")
         pyglet.app.run()
+
+    def shutdown(self) -> None:
+        print("[Renderer] shutdown")
+        self.window.close()
+        pyglet.app.exit()        
 
     ###############################################################################
     #
@@ -183,7 +188,7 @@ class EyeRenderer:
         prog["eyeLidPosition"] = self.eye_lid_position
         prog["rotation"] = float(self.rotation_deg)
         prog["irisColor"] = self.iris_color
-        prog["corneaColor"] = self.cornea_color
+        prog["striationColor"] = self.striation_color
         prog["isCatEye"] = self.is_cat_eye
 
         gl.glBindVertexArray(self._vao)
