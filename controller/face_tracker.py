@@ -1,18 +1,3 @@
-"""
-Advanced OAK-D Face Tracker
-============================
-Features:
-  - Hungarian algorithm for optimal detection-to-track assignment
-  - Kalman filter per track (position + velocity)
-  - Kalman keeps predicting during missing frames for better re-linking
-  - Anisotropic measurement noise (Z/depth trusted less than X/Y)
-  - Depth-adaptive matching distance
-  - Tentative vs confirmed track lifecycle
-  - Re-identification window for recently lost tracks
-  - Optional face embedding similarity (re-ID)
-  - Exponential moving average smoothing on output positions
-"""
-
 import math
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -21,71 +6,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from data_types import Detection, FaceId, Position3D, TrackedFaces
-
-
-# ---------------------------------------------------------------------------
-# Kalman Filter (constant-velocity model in 3D)
-# ---------------------------------------------------------------------------
-
-class KalmanFilter3D:
-    """
-    State vector: [x, y, z, vx, vy, vz]
-    Observation:  [x, y, z]
-    """
-
-    def __init__(self, position: Position3D):
-        self.state = np.array(
-            [position.x, position.y, position.z, 0.0, 0.0, 0.0], dtype=float
-        )
-
-        # State transition matrix (constant velocity)
-        self.F = np.eye(6)
-        self.F[0, 3] = 1.0
-        self.F[1, 4] = 1.0
-        self.F[2, 5] = 1.0
-
-        # Observation matrix (we only observe position)
-        self.H = np.zeros((3, 6))
-        self.H[0, 0] = 1.0
-        self.H[1, 1] = 1.0
-        self.H[2, 2] = 1.0
-
-        # Covariance matrix
-        self.P = np.eye(6) * 1.0
-
-        # Process noise (tune for how dynamic faces move)
-        q = 0.1
-        self.Q = np.eye(6) * q
-
-        # Anisotropic measurement noise: Z (depth) is noisier on OAK-D than X/Y.
-        # Higher R[2,2] tells the filter to trust depth readings less and rely
-        # more on its own prediction — keeps tracks stable during noisy depth
-        # frames and makes re-linking after a brief miss much more reliable.
-        r_xy = 0.05   # spatial noise (metres) — tune to your camera
-        r_z  = 0.20   # depth noise — increase if Z readings are very jittery
-        self.R = np.diag([r_xy, r_xy, r_z])
-
-    def predict(self) -> Position3D:
-        """Predict next state. Returns predicted position."""
-        self.state = self.F @ self.state
-        self.P = self.F @ self.P @ self.F.T + self.Q
-        return Position3D(self.state[0], self.state[1], self.state[2])
-
-    def update(self, measurement: Position3D):
-        """Update with observed position."""
-        z = np.array([measurement.x, measurement.y, measurement.z]) - self.H @ self.state
-        S = self.H @ self.P @ self.H.T + self.R
-        K = self.P @ self.H.T @ np.linalg.inv(S)
-        self.state = self.state + K @ z
-        self.P = (np.eye(6) - K @ self.H) @ self.P
-
-    @property
-    def position(self) -> Position3D:
-        return Position3D(self.state[0], self.state[1], self.state[2])
-
-    @property
-    def velocity(self) -> np.ndarray:
-        return self.state[3:].copy()
+from kalman_filter_3d import KalmanFilter3D
 
 
 # ---------------------------------------------------------------------------
@@ -178,35 +99,24 @@ class Track:
 # ---------------------------------------------------------------------------
 
 class FaceTracker:
-    def __init__(
-        self,
-        # Matching
-        base_max_distance: float = 0.4,      # metres at 1m depth
-        depth_scale_factor: float = 0.15,    # extra distance per metre of depth
-        embedding_weight: float = 0.3,       # 0 = position only, 1 = embedding only
+    # Matching
+    base_max_distance  = 0.4    # metres at 1m depth
+    depth_scale_factor = 0.15   # extra distance per metre of depth
+    embedding_weight   = 0.3    # 0 = position only, 1 = embedding only
 
-        # Track lifecycle
-        min_hits_to_confirm: int = 3,        # tentative → confirmed
-        max_missing_confirmed: int = 15,     # frames before confirmed track is dropped
-        max_missing_tentative: int = 2,      # frames before tentative track is dropped
+    # Track lifecycle
+    min_hits_to_confirm   = 3   # tentative → confirmed
+    max_missing_confirmed = 15  # frames before confirmed track is dropped
+    max_missing_tentative = 2   # frames before tentative track is dropped
 
-        # Re-identification
-        reid_window_frames: int = 30,        # how long to keep lost tracks for re-ID
-        reid_max_distance: float = 0.8,      # wider search radius for re-ID
+    # Re-identification
+    reid_window_frames = 30     # how long to keep lost tracks for re-ID
+    reid_max_distance  = 0.8    # wider search radius for re-ID
 
-        # Smoothing
-        ema_alpha: float = 0.4,
-    ):
-        self.base_max_distance = base_max_distance
-        self.depth_scale_factor = depth_scale_factor
-        self.embedding_weight = embedding_weight
-        self.min_hits_to_confirm = min_hits_to_confirm
-        self.max_missing_confirmed = max_missing_confirmed
-        self.max_missing_tentative = max_missing_tentative
-        self.reid_window_frames = reid_window_frames
-        self.reid_max_distance = reid_max_distance
-        self.ema_alpha = ema_alpha
+    # Smoothing
+    ema_alpha = 0.4
 
+    def __init__(self):
         self.tracks: dict[FaceId, Track] = {}
         self.lost_tracks: list[tuple[int, Track]] = []  # (frames_since_lost, track)
         self._next_id: FaceId = 0

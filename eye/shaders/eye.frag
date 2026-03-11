@@ -4,7 +4,7 @@
     Original shader sourced from: https://www.shadertoy.com/view/lsfGRr
     By: Beautypi
 
-    Heavily modified with color, pupil, motion additions and controls, etc.
+    Heavily modified by adding colors, motion, and controls.
 */
 
 in vec2 v_uv;
@@ -16,7 +16,9 @@ uniform float radius;
 uniform vec3 irisColor;
 uniform vec3 striationColor;
 uniform float eyeLidPosition;
+uniform float rotation;
 uniform bool isCatEye;
+
 
 // Rotation applied at each fbm octave to avoid axis-aligned artifacts
 const mat2 FBM_ROT = mat2(0.80, 0.60, -0.60, 0.80);
@@ -66,8 +68,12 @@ void main()
 {
     vec2 fragCoord = v_uv * iResolution;
 
-    // Normalized coords: y-corrected, centered, [-1, 1] range
+    // Normalized coords: y-corrected, centered, aspect-ratio-correct
     vec2 p = (2.0 * fragCoord - iResolution.xy) / iResolution.y;
+
+    // Rotate in aspect-ratio-corrected space so the eye stays circular
+    float _r = rotation * (3.14159265358979323846 / 180.0);
+    p = mat2(cos(_r), sin(_r), -sin(_r), cos(_r)) * p;
     float r = length(p) * (1.0 + radius * clamp(1.0 - length(p), 0.0, 1.0));
     float a = atan(p.y, p.x);
 

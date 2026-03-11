@@ -19,6 +19,14 @@ class Position3D:
 
 
 @dataclass(frozen=True)
+class CameraConfig:
+    """Camera mount position relative to the system base (meters)."""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+
+@dataclass(frozen=True)
 class EyeConfig:
     """Static configuration for a single eye."""
     eye_id: EyeId

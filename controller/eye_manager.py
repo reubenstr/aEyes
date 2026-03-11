@@ -1,12 +1,11 @@
-
 import math
 import random
 import time
 
-from data_types import Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
+from data_types import CameraConfig, Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
 from colors import COLOR_POOL, GREY
 from conversions import Conversions
-from eye_assignment import EyeAssignmentManager
+from eye_assigner import EyeAssigner
 
 class EyeManager:
     """
@@ -29,11 +28,11 @@ class EyeManager:
     
     BLINK_RATE      = 1.0   # complete blinks per second (1.0 = 1 second per blink)
 
-    def __init__(self, eye_configs: list[EyeConfig]) -> None:  
-        
-        self._assignment_manager = EyeAssignmentManager(eye_configs)      
-        
-        self._conversions = Conversions(eye_configs)
+    def __init__(self, eye_configs: list[EyeConfig], camera_config: CameraConfig) -> None:
+
+        self._eye_assigner = EyeAssigner(eye_configs)
+
+        self._conversions = Conversions(eye_configs, camera_config)
         
         self._states: dict[EyeId, EyeState] = {
             cfg.eye_id: EyeState(eye_id=cfg.eye_id)
@@ -132,7 +131,7 @@ class EyeManager:
         now = time.monotonic()
 
         # Assign eyes to faces
-        assignments = self._assignment_manager.update(tracked_faces)
+        assignments = self._eye_assigner.update(tracked_faces)
        
         # Assign a color to any newly seen face_id
         for fid in assignments.values():

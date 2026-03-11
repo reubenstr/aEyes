@@ -6,7 +6,7 @@ from eye_renderer import EyeRenderer
 from threading import Thread, Event, Lock
 from time import sleep
 
-from interfaces import ControlMessage
+from interfaces import ControlMessage, MessageType
 from motors.interfaces import MotorName, MotorSpeeds
 from motors.motors import Motors
 
@@ -26,7 +26,7 @@ class Eye:
         print("[Main] init eye renderer")
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
-        self.eye_renderer.set_message('info', 'Waiting for data.')
+        self.eye_renderer.set_message(MessageType.INFO, 'Waiting for data.')
 
     def init_socket(self):
         print("[Main] init zmq")
@@ -41,7 +41,7 @@ class Eye:
         print("[Main] initialize local variables")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
-            self.eye_renderer.set_message("error", "EYE_ID not found in ENV vars!")
+            self.eye_renderer.set_message(MessageType.ERROR, "EYE_ID not found in ENV vars!")
         else:    
             self.eye_id = int(eye_id)
 
@@ -83,23 +83,6 @@ class Eye:
         self.exit_event.clear()
 
         while not self.exit_event.is_set():
-
-            import time
-            from math import sin
-            while True:
-                now = time.time()
-                self.eye_renderer.set_message('', '')
-                self.eye_renderer.set_radius(.8)
-                self.eye_renderer.set_rotation_deg(0)
-                self.eye_renderer.set_eye_lid_position((sin(now) + 1) / 2)
-                self.eye_renderer.set_eye_lid_position(1)
-                self.eye_renderer.set_iris_color_rgb255((0, 255, 0))
-                self.eye_renderer.set_striation_color_rgb255((0, 0, 0))
-                self.eye_renderer.set_is_cat_eye(False)      
-
-                sleep(0.1)
-
-
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -109,7 +92,7 @@ class Eye:
                     if self.eye_id:  
                         msg = messages[self.eye_id]                  
 
-                        self.eye_renderer.set_message('', '')
+                        self.eye_renderer.set_message(MessageType.INFO, '')
                         self.eye_renderer.set_radius(msg.radius)
                         self.eye_renderer.set_rotation_deg(msg.rotation_deg)
                         self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
@@ -136,7 +119,7 @@ class Eye:
         self.init_eye_renderer()    
         self.init_socket()
         self.init_local()
-        # self.init_motors()
+        self.init_motors()
         self.start()
 
         # Blocking

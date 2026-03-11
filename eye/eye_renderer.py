@@ -2,6 +2,8 @@ import time
 import ctypes
 from pathlib import Path
 
+from interfaces import MessageType
+
 import pyglet
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
 pyglet.options.shadow_window = False
@@ -83,11 +85,11 @@ class EyeRenderer:
     def set_is_cat_eye(self, value: bool) -> None:
         self.is_cat_eye = bool(value)
 
-    def set_message(self, msgType: str,  text: str) -> None:
-        if msgType == 'error':
-            self.message_label.color = color=(255, 80, 80, 255)
+    def set_message(self, msgType: MessageType, text: str) -> None:
+        if msgType == MessageType.ERROR:
+            self.message_label.color = (255, 80, 80, 255)
         else:
-            self.message_label.color = color=(225, 225, 225, 255)
+            self.message_label.color = (225, 225, 225, 255)
         self.pending_text = text
 
     def run(self) -> None:

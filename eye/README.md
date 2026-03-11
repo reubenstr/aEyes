@@ -2,11 +2,11 @@
 
 This code creates the eye graphic and controls the motors.
 
-Executed on the Raspbery Pi 4.
+Executed on the Raspberry Pi 4.
 
 ## Hardware
 
-  Raspberry Pi 4 B with 4MB RAM (but 2MB will likely work).
+- Raspberry Pi 4 B with 4GB RAM (but 2GB will likely work).
 - https://www.raspberrypi.com/products/raspberry-pi-4-model-b/
 
 Waveshare 4inch DSI LCD
@@ -22,59 +22,46 @@ Waveshare RS485 CAN Hat
 
 ### Operating System
 
-Raspberry Pi OS (64-bit) Desktop (Trixie)
+Create a master SD card that will be cloned for the remaining five RPis.
 
 SD creation tool:
 - https://www.raspberrypi.com/software/
 
 Use the Raspberry Pi creation tool and apply OS customization with the following:
+- Operating system: Raspberry Pi OS (64-bit) Desktop (Trixie)
 - Hostname: eye<EYE_ID> (e.g: eye1, eye2, eye3...)
 - Username/password: pi/pi
 - Wifi credentials 
 - Locale settings
 - Enable SSH
 
-Boot the Pi.
+Connect the Pi to a keyboard/monitor and boot the Pi. 
 
 Copy the controller's SSH keys to the RPi:
 ```bash
-ssh-copy-id pi@eye<200+<EYE_ID>>.local
+ssh-copy-id pi@eye<EYE_ID>.local
+```
+
+Copy the Eye files:
+```bash
+scp -r ~/aEyes/eye pi@<ip>:~/aEyes/eye
 ```
 
 SSH into the RPi:
 ```bash
-ssh pi@eye<200+<EYE_ID>>.local
+ssh pi@eye<EYE_ID>.local
 ```
 
-Update the system:
+Run the install.sh script:
 ```bash
-sudo apt update
-sudo apt full-upgrade
-```
-
-Setup dependencies:
-```bash
-sudo apt install -y python3-venv
-pip install --upgrade pip
-```
-
-Clone the repo in the home directory:
-```bash
-cd ~
-git clone jetson@192.168.1.200:~/git-remotes/aEyes.git
-```
-
-### Script Installation
-
-Run the setup.sh script:
-```bash
-cd ~/aEyes/setup
+cd ~/aEyes/eye
 sudo ./install.sh
 ```
 
-The script completes the following actions:
+The install script completes the following actions:
 - Selects EYE_ID (user selected)
 - sets the hostname
+- resets the machine ID
 - Configs the RPi firmware (overlays for LCD and CAN)
 - Creates virtual environment
 - Adds EYE_ID to .env
@@ -86,12 +73,38 @@ The script completes the following actions:
 - Installs services
 - Configures ethernet static IP
 
+Reboot the Pi:
+```bash
+sudo reboot
+```
+
+Verify the DSI LCD operates correctly and the PI is reachable over ethernet.
+
+Shutdown the PI:
+```bash
+sudo shutdown now
+```
+
+## Cloning
+
+Clone the SD card after setup is complete:
+```bash
+sudo dd if=/dev/mmcblk0 of=~/master_eye.img bs=4M status=progress
+```
+
+Image the other five SD cards:
+```bash
+sudo dd if=~/master_eye.img of=/dev/sdX bs=4M status=progress
+```
+
+Boot up each RPi and run the install.sh script to setup unique configuration. Use a keyboard/monitor.
+
 
 ## Manual execution
 
 ### Eyes:
 
-ENV vars required to start GUI on RPI over SSH:
+ENV vars are required to start GUI on RPI over SSH:
 
 ```bash
 export DISPLAY=:0
@@ -99,27 +112,15 @@ export XAUTHORITY=/home/pi/.Xauthority
 ```
 
 main.sh loads the virtual environment then starts the main script
-```
-cd aEyes/eyes
+```bash
+cd aEyes/eye
 sudo ./main.sh
 ```
 
+### Misc. Commands
 
-### Misc Resources
-
-RPI4 UART Pins: https://pragmaticaddict.com/raspi-5-serial-ports.html
-
-
-### Misc. Commands Under Test
-
-
-TEMP:
-echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-echo 600000 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
-
-MORE:
-
+```bash
 sudo ip link set can0 up type can bitrate 1000000
 sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
-
+```

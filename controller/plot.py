@@ -1,11 +1,3 @@
-"""
-visualize_tracks.py
---------------------
-Real-time animated 3D plot of face tracks and eye assignments.
-The tracker and eye manager are stepped once per animation frame
-so that wall-clock time drives the rate-limiter correctly.
-"""
-
 import math
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,23 +6,8 @@ import matplotlib.animation as animation
 
 from face_tracker import FaceTracker
 from eye_manager import EyeManager
-from data_types import Detection, EyeConfig, Position3D
-
-
-# ---------------------------------------------------------------------------
-# Eye layout
-# ---------------------------------------------------------------------------
-
-EYE_CONFIGS = [
-    EyeConfig(eye_id=0, x= 0.0, y=0.4, z=0.0),
-    EyeConfig(eye_id=1, x= 0.0, y=0.2, z=0.346),
-    EyeConfig(eye_id=2, x= 0.0, y=-0.2, z=0.346),
-    EyeConfig(eye_id=3, x= 0.0, y=-0.4, z=0.0),
-    EyeConfig(eye_id=4, x= 0.0, y=-0.2, z=-0.346),
-    EyeConfig(eye_id=5, x= 0.0, y=0.2, z=-0.346),
-]
-
-NUM_EYES = len(EYE_CONFIGS)
+from data_types import CameraConfig, Detection, EyeConfig, Position3D
+from config import EYE_CONFIGS, CAMERA_CONFIG
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +33,6 @@ def _draw_eye_cylinders(ax, eye_configs: list[EyeConfig]):
             cfg.z + z_ring,
             color='black', linewidth=1.0,
         )
-
 
 # ---------------------------------------------------------------------------
 # Simulated detections
@@ -104,9 +80,11 @@ def get_detections(frame: int) -> list[Detection]:
     elif frame < 40:
         return [face_b, face_d, face_e]
     elif frame < 100:
-        return [face_b]
+        return [face_b, face_a]
+    elif frame < 130:
+       return [face_b] 
     else:
-        return [face_a]
+        return [face_b, face_a]
 
 
 # ---------------------------------------------------------------------------
@@ -114,15 +92,8 @@ def get_detections(frame: int) -> list[Detection]:
 # ---------------------------------------------------------------------------
 
 def run(num_frames: int = 500, interval_ms: int = 50):
-    tracker = FaceTracker(
-        base_max_distance=0.4,
-        depth_scale_factor=0.15,
-        min_hits_to_confirm=3,
-        max_missing_confirmed=15,
-        reid_window_frames=30,
-        ema_alpha=0.4,
-    )
-    eye_mgr = EyeManager(eye_configs=EYE_CONFIGS)
+    tracker = FaceTracker()
+    eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
 
     track_history: dict[int, dict[str, list[float]]] = {}
 
@@ -142,7 +113,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     _draw_eye_cylinders(ax, EYE_CONFIGS)
 
     ax_eyes = fig.add_axes([0.05, 0.05, 0.90, 0.15])
-    ax_eyes.set_xlim(0, NUM_EYES)
+    ax_eyes.set_xlim(0,  len(EYE_CONFIGS))
     ax_eyes.set_ylim(0, 1)
     ax_eyes.axis('off')
 
@@ -159,7 +130,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     YAW_Y         = 0.18
     PITCH_Y       = 0.05
 
-    for i in range(NUM_EYES):
+    for i in range( len(EYE_CONFIGS)):
         cx = i + 0.5
         circle = mpatches.Ellipse(
             (cx, CIRCLE_Y), CIRCLE_RADIUS * 2, CIRCLE_RADIUS * 2,
@@ -290,7 +261,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
                     pos.x, pos.y, pos.z - 0.1, eye_label,
                     fontsize=8, color='black', ha='center', va='top')
 
-        ax.set_title(f'Face Tracking + Eye Assignment  —  frame {frame}')
+        ax.set_title(f'aEyes — Face Tracking + Eye Assignment — frame {frame}')
         return (
             list(eye_circles)
             + eye_id_texts
@@ -313,4 +284,4 @@ def run(num_frames: int = 500, interval_ms: int = 50):
 
 
 if __name__ == "__main__":
-    run(num_frames=500, interval_ms=250)
+    run(num_frames=500, interval_ms=150)

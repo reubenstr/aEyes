@@ -1,6 +1,6 @@
 import numpy as np
 
-from data_types import EyeId, EyeConfig, Position3D
+from data_types import EyeId, EyeConfig, CameraConfig, Position3D
 from matrix_utils import R_from_rpy, T_from_R_t, T_inverse, to_homogeneous, from_homogeneous
 
 # System coordinates:
@@ -11,11 +11,10 @@ from matrix_utils import R_from_rpy, T_from_R_t, T_inverse, to_homogeneous, from
 #   +Pitch → Rotate up
 
 class Conversions:
-    def __init__(self, eye_configs: list[EyeConfig]):
+    def __init__(self, eye_configs: list[EyeConfig], camera_config: CameraConfig):
 
         # Camera mount relative to base (meters)
-        # TODO: set physical camera location
-        t_base_camera = np.array([0.0, 0.0, 0.0])
+        t_base_camera = np.array([camera_config.x, camera_config.y, camera_config.z])
 
         R_base_camera = R_from_rpy(*np.deg2rad([0.0, 0.0, 0.0]))
 
