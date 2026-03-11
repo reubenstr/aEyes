@@ -20,13 +20,13 @@ class Conversions:
 
         self.T_base_camera = T_from_R_t(R_base_camera, t_base_camera)
 
-        # Offset from yaw pivot to pitch pivot along the gimbal arm (meters)
-        # TODO: set physical offset
-        self.t_yaw_to_pitch = np.array([0.0, 0.0, 0.0]) # np.array([0.106, 0.0, 0.0])
-
-        # Precompute per-eye gimbal transforms from EyeConfig positions
+        # Precompute per-eye gimbal transforms and pitch pivot offsets from EyeConfig
         self.T_base_gimbal: dict[EyeId, np.ndarray] = {
-            cfg.eye_id: T_from_R_t(R_from_rpy(0.0, 0.0, 0.0), np.array([cfg.x, cfg.y, cfg.z]))
+            cfg.eye_id: T_from_R_t(R_from_rpy(0.0, 0.0, 0.0), np.array([cfg.position.x, cfg.position.y, cfg.position.z]))
+            for cfg in eye_configs
+        }
+        self.t_yaw_to_pitch: dict[EyeId, np.ndarray] = {
+            cfg.eye_id: np.array([cfg.pitch_pivot_offset.x, cfg.pitch_pivot_offset.y, cfg.pitch_pivot_offset.z])
             for cfg in eye_configs
         }
 
@@ -50,7 +50,7 @@ class Conversions:
         # Pitch: rotate into yaw-aligned frame, offset to pitch pivot, then arctan
         R_yaw = R_from_rpy(0.0, 0.0, np.radians(yaw_deg))
         p_yaw_aligned = R_yaw.T @ p_yaw
-        p_pitch = p_yaw_aligned - self.t_yaw_to_pitch
+        p_pitch = p_yaw_aligned - self.t_yaw_to_pitch[eye_id]
         px, py, pz = p_pitch
         pitch_deg = np.degrees(np.arctan2(pz, np.hypot(px, py)))
 

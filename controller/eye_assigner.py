@@ -239,8 +239,8 @@ class EyeAssigner:
             stolen_gid = min(
                 face_load[donor_fid],
                 key=lambda gid: math.sqrt(
-                    (self._configs[gid].x - ux) ** 2 +
-                    (self._configs[gid].y - uy) ** 2
+                    (self._configs[gid].position.x - ux) ** 2 +
+                    (self._configs[gid].position.y - uy) ** 2
                 ),
             )
             face_load[donor_fid].remove(stolen_gid)
@@ -262,7 +262,7 @@ class EyeAssigner:
 
         for gid in self._available_pool:
             cfg = self._configs[gid]
-            dist = math.sqrt((cfg.x - face_x) ** 2 + (cfg.y - face_y) ** 2)
+            dist = math.sqrt((cfg.position.x - face_x) ** 2 + (cfg.position.y - face_y) ** 2)
             if dist < best_dist:
                 best_dist = dist
                 best_id = gid
@@ -324,7 +324,7 @@ class EyeAssigner:
             )
             lines.append(
                 f"  Eye {g.eye_id:2d} "
-                f"[pos=({cfg.x:.2f}, {cfg.y:.2f}, {cfg.z:.2f})]: "
+                f"[pos=({cfg.position.x:.2f}, {cfg.position.y:.2f}, {cfg.position.z:.2f})]: "
                 f"{status}"
             )
         lines.append(f"  Available pool: {sorted(self._available_pool)}")

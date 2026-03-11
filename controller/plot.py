@@ -19,18 +19,42 @@ def _to_mpl_color(color) -> tuple[float, float, float]:
     return (color.red / 255.0, color.green / 255.0, color.blue / 255.0)
 
 
-def _draw_eye_cylinders(ax, eye_configs: list[EyeConfig]):   
-    radius = 0.025
+def _draw_camera_frustum(ax, camera_config: CameraConfig, depth: float = 3.0):
+    """Draw the camera's FOV as a wireframe pyramid."""
+    cx, cy, cz = camera_config.x, camera_config.y, camera_config.z
+    half_h = math.radians(camera_config.horizontal_fov / 2.0)
+    half_v = math.radians(camera_config.vertical_fov / 2.0)
+    # Far-plane half-extents (system: +X forward, +Y left, +Z up)
+    fy = depth * math.tan(half_h)
+    fz = depth * math.tan(half_v)
+    corners = [
+        (cx + depth, cy + fy, cz + fz),
+        (cx + depth, cy - fy, cz + fz),
+        (cx + depth, cy - fy, cz - fz),
+        (cx + depth, cy + fy, cz - fz),
+    ]
+    for corner in corners:
+        ax.plot([cx, corner[0]], [cy, corner[1]], [cz, corner[2]],
+                color='blue', linewidth=0.5, alpha=0.3)
+    # Far-plane rectangle
+    for i in range(4):
+        c1, c2 = corners[i], corners[(i + 1) % 4]
+        ax.plot([c1[0], c2[0]], [c1[1], c2[1]], [c1[2], c2[2]],
+                color='blue', linewidth=0.5, alpha=0.3)
+
+
+def _draw_eye_cylinders(ax, eye_configs: list[EyeConfig], radius: float = 0.025):
     theta  = np.linspace(0, 2 * np.pi, 60)
  
     y_ring = radius * np.cos(theta)
     z_ring = radius * np.sin(theta)
 
     for cfg in eye_configs:
-        ax.plot( 
-            np.full_like(theta, cfg.x),
-            cfg.y + y_ring,
-            cfg.z + z_ring,
+        # Yaw pivot (static — always at the eye mount position)
+        ax.plot(
+            np.full_like(theta, cfg.position.x),
+            cfg.position.y + y_ring,
+            cfg.position.z + z_ring,
             color='black', linewidth=1.0,
         )
 
@@ -110,7 +134,9 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     ax.set_ylim(-2.1, 2.1)
     ax.set_zlim(-1.1, 1.1)
     ax.set_box_aspect([4, 5, 3])  # proportional to axis ranges for 1:1:1 scaling
-    _draw_eye_cylinders(ax, EYE_CONFIGS)
+    base_cylinder_radius = 0.025
+    _draw_eye_cylinders(ax, EYE_CONFIGS, radius=base_cylinder_radius)
+    _draw_camera_frustum(ax, CAMERA_CONFIG)
 
     ax_eyes = fig.add_axes([0.05, 0.05, 0.90, 0.15])
     ax_eyes.set_xlim(0,  len(EYE_CONFIGS))
@@ -124,7 +150,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
     yaw_texts:      list[plt.Text]         = []
     pitch_texts:    list[plt.Text]         = []
 
-    CIRCLE_RADIUS = 0.28
+    CIRCLE_RADIUS = 0.25
     CIRCLE_Y      = 0.60
     FACE_ID_Y     = 0.32
     YAW_Y         = 0.18
@@ -164,12 +190,16 @@ def run(num_frames: int = 500, interval_ms: int = 50):
 
     eye_cfg_by_id = {cfg.eye_id: cfg for cfg in EYE_CONFIGS}
 
+    theta_ring = np.linspace(0, 2 * np.pi, 60)
+
     artists: dict[str, dict] = {
-        'lines':       {},
-        'points':      {},
-        'face_labels': {},
-        'eye_labels':  {},
-        'gaze_lines':  {},
+        'lines':          {},
+        'points':         {},
+        'face_labels':    {},
+        'eye_labels':     {},
+        'assignment_lines':{},
+        'gimbal_arms':    {},
+        'eye_cylinders':  {},
     }
 
     def animate(frame):
@@ -214,26 +244,63 @@ def run(num_frames: int = 500, interval_ms: int = 50):
                 artist.remove()
             group.clear()
 
-        # Draw gaze rays driven by yaw/pitch angles.
-        # System coords: +X forward, +Y left, +Z up.
-        # Yaw rotates CCW around Z; pitch rotates up from XY plane.
+        # Draw animated gimbal arms and pitch pivot cylinders.
+        # The arm extends from the yaw pivot (cfg.position) and rotates with yaw.
+        # The pitch pivot ring is oriented perpendicular to the look direction (yaw + pitch).
+        eye_cylinder_radius = 0.05
         for eye_id, state in eye_states.items():
+            cfg     = eye_cfg_by_id[eye_id]
+            yaw_r   = math.radians(state.yaw)
+            pitch_r = math.radians(state.pitch)
+
+            # Rotate the arm offset by yaw around Z to get the pitch pivot world position
+            ox, oy, oz = cfg.pitch_pivot_offset.x, cfg.pitch_pivot_offset.y, cfg.pitch_pivot_offset.z
+            pp_x = cfg.position.x + ox * math.cos(yaw_r) - oy * math.sin(yaw_r)
+            pp_y = cfg.position.y + ox * math.sin(yaw_r) + oy * math.cos(yaw_r)
+            pp_z = cfg.position.z + oz
+
+            # Arm line: yaw pivot → pitch pivot
+            artists['gimbal_arms'][eye_id] = ax.plot(
+                [cfg.position.x, pp_x],
+                [cfg.position.y, pp_y],
+                [cfg.position.z, pp_z],
+                color='black', linewidth=1.5,
+            )[0]
+
+            # Eye cylinder ring — perpendicular to the look direction (yaw + pitch).
+            # Look direction (ring normal):
+            #   dx = cos(pitch) * cos(yaw),  dy = cos(pitch) * sin(yaw),  dz = sin(pitch)
+            # u = pitch axis (horizontal, perpendicular to arm): [-sin(yaw), cos(yaw), 0]
+            # v = cross(look, u) = [-sin(pitch)*cos(yaw), -sin(pitch)*sin(yaw), cos(pitch)]
+            cp, sp = math.cos(pitch_r), math.sin(pitch_r)
+            cy, sy = math.cos(yaw_r),   math.sin(yaw_r)
+            ux, uy, uz =  -sy,       cy,       0.0
+            vx, vy, vz =  -sp * cy, -sp * sy,  cp
+            ring_x = pp_x + eye_cylinder_radius * (np.cos(theta_ring) * ux + np.sin(theta_ring) * vx)
+            ring_y = pp_y + eye_cylinder_radius * (np.cos(theta_ring) * uy + np.sin(theta_ring) * vy)
+            ring_z = pp_z + eye_cylinder_radius * (np.cos(theta_ring) * uz + np.sin(theta_ring) * vz)
+            artists['eye_cylinders'][eye_id] = ax.plot(
+                ring_x, ring_y, ring_z,
+                color='black', linewidth=1.0,
+            )[0]
+
+            # Assignment line — projects along the eye cylinder normal (always perpendicular to the ring).
             if state.face_id is not None and state.face_id in tracked_faces:
-                cfg = eye_cfg_by_id[eye_id]
-                fp  = tracked_faces[state.face_id]
-                ray_len = math.sqrt((fp.x - cfg.x)**2 + (fp.y - cfg.y)**2 + (fp.z - cfg.z)**2)
-                yaw_r   = math.radians(state.yaw)
-                pitch_r = math.radians(state.pitch)
-                dx = math.cos(pitch_r) * math.cos(yaw_r)
-                dy = math.cos(pitch_r) * math.sin(yaw_r)
-                dz = math.sin(pitch_r)
+                fp = tracked_faces[state.face_id]
+                ray_len = math.sqrt((fp.x - pp_x)**2 + (fp.y - pp_y)**2 + (fp.z - pp_z)**2)
+                look_x = cp * cy
+                look_y = cp * sy
+                look_z = sp
                 mpl_color = _to_mpl_color(state.iris_color)
-                artists['gaze_lines'][eye_id] = ax.plot(
-                    [cfg.x, cfg.x + ray_len * dx],
-                    [cfg.y, cfg.y + ray_len * dy],
-                    [cfg.z, cfg.z + ray_len * dz],
-                    color=mpl_color, linewidth=1.5, alpha=0.8,
+                artists['assignment_lines'][eye_id] = ax.plot(
+                    [pp_x, pp_x + ray_len * look_x],
+                    [pp_y, pp_y + ray_len * look_y],
+                    [pp_z, pp_z + ray_len * look_z],
+                    color=mpl_color, linewidth=1.5, alpha=0.6,
                 )[0]
+
+        TRAIL_LEN = 300
+        TRAIL_SEGMENTS = 6  # number of fade segments
 
         for track_id, pos in tracked_faces.items():
             if track_id not in track_history:
@@ -243,12 +310,19 @@ def run(num_frames: int = 500, interval_ms: int = 50):
             track_history[track_id]['z'].append(pos.z)
 
             hist = track_history[track_id]
-            rx = hist['x'][-300:]
-            ry = hist['y'][-300:]
-            rz = hist['z'][-300:]
+            rx = hist['x'][-TRAIL_LEN:]
+            ry = hist['y'][-TRAIL_LEN:]
+            rz = hist['z'][-TRAIL_LEN:]
+            n = len(rx)
 
-            artists['lines'][track_id] = ax.plot(
-                rx, ry, rz, color='black', alpha=0.4)[0]
+            # Draw trail as segments with fading alpha (oldest → most transparent)
+            seg_size = max(1, n // TRAIL_SEGMENTS)
+            for seg_i in range(0, n - 1, seg_size):
+                seg_end = min(seg_i + seg_size + 1, n)
+                alpha = 0.1 + 0.5 * (seg_i / max(n - 1, 1))
+                artists['lines'][(track_id, seg_i)] = ax.plot(
+                    rx[seg_i:seg_end], ry[seg_i:seg_end], rz[seg_i:seg_end],
+                    color='black', alpha=alpha, linewidth=1.0)[0]
             artists['points'][track_id] = ax.scatter(
                 pos.x, pos.y, pos.z, color='black', s=100, marker='o')
             artists['face_labels'][track_id] = ax.text(
@@ -278,6 +352,24 @@ def run(num_frames: int = 500, interval_ms: int = 50):
         blit=False,
         repeat=False,
     )
+
+    paused = [False]
+    pause_text = fig.text(0.5, 0.97, '', ha='center', va='top', fontsize=9, color='red')
+
+    def on_key(event):
+        if event.key != ' ':
+            return
+        if paused[0]:
+            ani.resume()
+            paused[0] = False
+            pause_text.set_text('')
+        else:
+            ani.pause()
+            paused[0] = True
+            pause_text.set_text('PAUSED — zoom/rotate freely, press Space to resume')
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect('key_press_event', on_key)
 
     plt.show()
     return ani

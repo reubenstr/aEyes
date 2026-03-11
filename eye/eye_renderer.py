@@ -2,7 +2,7 @@ import time
 import ctypes
 from pathlib import Path
 
-from interfaces import MessageType
+from data_types import MessageType
 
 import pyglet
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader

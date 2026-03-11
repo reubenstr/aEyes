@@ -24,15 +24,16 @@ class CameraConfig:
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
+    horizontal_fov: float = 0.0   # degrees
+    vertical_fov: float = 0.0     # degrees
 
 
 @dataclass(frozen=True)
 class EyeConfig:
     """Static configuration for a single eye."""
     eye_id: EyeId
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
+    position: Position3D = field(default_factory=lambda: Position3D(0.0, 0.0, 0.0))
+    pitch_pivot_offset: Position3D = field(default_factory=lambda: Position3D(0.0, 0.0, 0.0))
 
 
 @dataclass
@@ -67,7 +68,6 @@ class EyeState:
     pitch: float = 0.0      # degrees
 
 
-# Return type for EyeManager.update()
 EyeStates = dict[EyeId, EyeState]   
 
 @dataclass
