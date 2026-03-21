@@ -156,15 +156,24 @@ if [ ! -f "$WALLPAPER_PATH" ]; then
     exit 1
 fi
 
+# Create the config directory and file if they don't exist
 if [ ! -f "$PCMANFM_CONF" ]; then
-    echo "Error: $PCMANFM_CONF does not exist. Cannot update wallpaper."
-    exit 1
-fi
-
-if grep -q '^wallpaper=' "$PCMANFM_CONF"; then
-    sed -i "s|^wallpaper=.*|wallpaper=$WALLPAPER_PATH|" "$PCMANFM_CONF"
+    echo "Config not found, creating: $PCMANFM_CONF"
+    mkdir -p "$(dirname "$PCMANFM_CONF")"
+    cat > "$PCMANFM_CONF" << EOF
+[*]
+wallpaper_mode=fit
+wallpaper_common=1
+wallpaper=$WALLPAPER_PATH
+EOF
+    echo "Wallpaper config created."
 else
-    echo "wallpaper=$WALLPAPER_PATH" >> "$PCMANFM_CONF"
+    if grep -q '^wallpaper=' "$PCMANFM_CONF"; then
+        sed -i "s|^wallpaper=.*|wallpaper=$WALLPAPER_PATH|" "$PCMANFM_CONF"
+    else
+        echo "wallpaper=$WALLPAPER_PATH" >> "$PCMANFM_CONF"
+    fi
+    echo "Wallpaper updated."
 fi
 
 # -----------------------------------------------------------------------------
@@ -250,4 +259,4 @@ echo "Run this command to see live logs: sudo journalctl -u main.service -f"
 # Complete
 echo ""
 echo "Install complete."
-echo "A reboot is required for some updates to take effect!"
+echo "A reboot is required for updates to take effect!"

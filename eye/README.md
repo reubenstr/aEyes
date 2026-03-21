@@ -22,15 +22,15 @@ Waveshare RS485 CAN Hat
 
 ### Operating System
 
-Create a master SD card that will be cloned for the remaining five RPis.
+Create a master SD card image that will be cloned for the remaining five RPis. The master will be configured as eye1 to start the process.
 
 SD creation tool:
 - https://www.raspberrypi.com/software/
 
 Use the Raspberry Pi creation tool and apply OS customization with the following:
 - Operating system: Raspberry Pi OS (64-bit) Desktop (Trixie)
-- Hostname: eye<EYE_ID> (e.g: eye1, eye2, eye3...)
-- Username/password: pi/pi
+- Hostname: eye1
+- Username/password: eye/eye
 - Wifi credentials 
 - Locale settings
 - Enable SSH
@@ -39,17 +39,17 @@ Connect the Pi to a keyboard/monitor and boot the Pi.
 
 Copy the controller's SSH keys to the RPi:
 ```bash
-ssh-copy-id pi@eye<EYE_ID>.local
+ssh-copy-id eye@eye1.local
 ```
 
 Copy the Eye files:
 ```bash
-scp -r ~/aEyes/eye pi@<ip>:~/aEyes/eye
+rsync -av --progress ~/aEyes/eye eye@eye1.local:~/aEyes/
 ```
 
 SSH into the RPi:
 ```bash
-ssh pi@eye<EYE_ID>.local
+ssh eye@eye1.local
 ```
 
 Run the install.sh script:
@@ -80,6 +80,11 @@ sudo reboot
 
 Verify the DSI LCD operates correctly and the PI is reachable over ethernet.
 
+Turn off WiFi:
+```bash
+nmcli radio wifi off
+```
+
 Shutdown the PI:
 ```bash
 sudo shutdown now
@@ -89,12 +94,16 @@ sudo shutdown now
 
 Clone the SD card after setup is complete:
 ```bash
-sudo dd if=/dev/mmcblk0 of=~/master_eye.img bs=4M status=progress
+sudo umount /dev/sda*
+sudo dd if=/dev/sda of=~/master_eye.img bs=4M status=progress
+sudo eject /dev/sda
 ```
 
 Image the other five SD cards:
 ```bash
-sudo dd if=~/master_eye.img of=/dev/sdX bs=4M status=progress
+sudo umount /dev/sda*
+sudo dd if=~/master_eye.img of=/dev/sda bs=4M status=progress conv=fsync
+sudo eject /dev/sda
 ```
 
 Boot up each RPi and run the install.sh script to setup unique configuration. Use a keyboard/monitor.

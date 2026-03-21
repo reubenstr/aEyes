@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -u
 
-SRC="/home/you/proj/"
 HOSTS=(
 	eye1.local
 	eye2.local
@@ -15,20 +14,18 @@ LOCAL_HOST="$(hostname -s)"
 
 for h in "${HOSTS[@]}"; do
 
-	echo -n "Syncing to $h... "
+	echo -n "Shutting down $h... "
 
 	if [[ "$h" == "$LOCAL_HOST" ]]; then
-		echo "Skipping (self)"
+		echo "skipping (self)"
+		continue
 	fi
 
-	rsync -az --delete \
-		--exclude='.git/' \
-		"$SRC" "$h:$SRC" >/dev/null 2>&1
-
-	RC=$?
-	if [[ $RC -ne 0 ]]; then
-		echo "ERROR (exit $RC)"
+	ERR=$(ssh -o ConnectTimeout=1 -o BatchMode=yes "eye@$h" "sudo shutdown now" 2>&1)
+	if [[ $? -ne 0 ]]; then
+		echo "failed — ${ERR}"
 	else
-		echo "OK"
+		echo "success"
 	fi
+
 done
