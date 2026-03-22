@@ -2,7 +2,7 @@
 
 This code creates the eye graphic and controls the motors.
 
-Executed on the Raspberry Pi 4.
+Executed on each of the eye's Raspberry Pi 4.
 
 ## Hardware
 
@@ -106,27 +106,38 @@ sudo dd if=~/master_eye.img of=/dev/sda bs=4M status=progress conv=fsync
 sudo eject /dev/sda
 ```
 
-Boot up each RPi and run the install.sh script to setup unique configuration. Use a keyboard/monitor.
+Boot up each RPi and run the install.sh script to setup unique EYE_ID per RPi. Use a keyboard/monitor or boot the RPis one at a time and ssh into eye@eye1.local.
 
 
-## Manual execution
+## Mechanical
 
-### Eyes:
+After the hardware is fully assembled and each RPi's software is configured, set the zero position of each motor.
+Execute the zero.sh script per RPi.
 
-ENV vars are required to start GUI on RPI over SSH:
+
+## Development
+
+ENV vars are required to start GUI on the RPi over SSH:
 
 ```bash
 export DISPLAY=:0
 export XAUTHORITY=/home/pi/.Xauthority
 ```
 
-main.sh loads the virtual environment then starts the main script
+Since the main.sh is exected via a service, stop the service prior to manually executing main.sh
+
+```bash
+systemctl stop main.service
+```
+
+Manually start the eye's software.
+
 ```bash
 cd aEyes/eye
 sudo ./main.sh
 ```
 
-### Misc. Commands
+### Misc. Commands and Notes
 
 ```bash
 sudo ip link set can0 up type can bitrate 1000000
