@@ -47,21 +47,20 @@ class Eye:
 
     def init_motors(self):
         print("[Main] initialize motors")
-        self.motors = Motors(allow_enable=True)     
-        self.motors.enable_all_motors()
-        self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
-        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)  
-        sleep(3)
-        return
+        if os.path.exists(".motors-zeroed"):
+            self.motors_zeroed = True
+        else:
+            print("[Main] ERROR: .motors-zeroed file not found. Run zero.py first to zero the motors!")
+            self.motors_zeroed = False
+            return        
 
-        while(True):
-            print("GO -")
-            self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=-30)
-            sleep(3)
-            print("GO +")
-            self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=30)
-            sleep(3)
+        self.motors = Motors(allow_enable=self.motors_zeroed)
 
+        if self.motors_zeroed == True: 
+            self.motors.enable_all_motors()
+            self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
+            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)       
+            sleep(3)
 
     ###############################################################################
     # Thread
@@ -83,7 +82,9 @@ class Eye:
         self.exit_event.clear()
 
         while not self.exit_event.is_set():
-            if self.socket:
+            if self.motors_zeroed == False:
+                self.eye_renderer.set_message(MessageType.ERROR, 'Motors not zeroed!')
+            elif self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
                     msg_json = json.loads(msg_raw)                   

@@ -153,6 +153,8 @@ def select(event):
     success = motors.set_zero_to_current_position(motor_name)
     if success:
         zerored_motors[selected_index[0]] = True
+        if all(zerored_motors):
+            open(".motors-zeroed", "w").close()
 
 
 @kb.add("c-c")
