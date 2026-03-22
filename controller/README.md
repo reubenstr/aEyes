@@ -5,6 +5,24 @@ Captures camera data and sends commands to the eyes.
 ## Installation
 
 
+
+### Operating System
+
+Create a master SD card image that will be cloned for the remaining five RPis. The master will be configured as eye1 to start the process.
+
+SD creation tool:
+- https://www.raspberrypi.com/software/
+
+Use the Raspberry Pi creation tool and apply OS customization with the following:
+- Operating system: Raspberry Pi OS (64-bit) Desktop (Trixie)
+- Hostname: aeyes
+- Username/password: aeyes/aeyes
+- Wifi credentials 
+- Locale settings
+- Enable SSH
+
+
+
 Create bare repo
 ```bash
 mkdir -p ~/git-remotes
