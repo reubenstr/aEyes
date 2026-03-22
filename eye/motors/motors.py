@@ -439,6 +439,7 @@ class Motors:
         return infos
 
     def shutdown(self):
+        print("[Motors] shutting down")
         self._stop()
         self.disable_all_motors()
         self.deinit_can_buses(self.can_infos)

@@ -28,6 +28,8 @@ for h in "${HOSTS[@]}"; do
 		--exclude='.venv/'
 		--exclude='.env'
 		--exclude='.motors-zeroed'
+		--exclude='__pycache__/'
+		--exclude='*.pyc'
 	)
 	RSYNC_OPTS=(-az --delete "${EXCLUDES[@]}")
 	$DRY_RUN && RSYNC_OPTS+=(--dry-run)
@@ -41,7 +43,16 @@ for h in "${HOSTS[@]}"; do
 	RC=$?
 	if [[ $RC -ne 0 ]]; then
 		echo "ERROR (exit $RC)"
-	else
-		echo "OK"
+		continue
+	fi
+	echo "OK"
+
+	if ! $DRY_RUN; then
+		echo -n "Restarting main.service on $h... "
+		if ssh "eye@$h" "sudo systemctl restart main.service" 2>/dev/null; then
+			echo "OK"
+		else
+			echo "ERROR"
+		fi
 	fi
 done

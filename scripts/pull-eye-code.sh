@@ -12,6 +12,8 @@ EXCLUDES=(
 	--exclude='.venv/'
 	--exclude='.env'
 	--exclude='.motors-zeroed'
+	--exclude='__pycache__/'
+	--exclude='*.pyc'
 )
 
 rsync -az "${EXCLUDES[@]}" "eye@$SRC_HOST:$SRC" "$DST"

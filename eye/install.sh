@@ -240,6 +240,8 @@ After=multi-user.target
 [Service]
 Type=simple
 WorkingDirectory=$USER_HOME/aEyes/eye
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=$USER_HOME/.Xauthority
 ExecStart=$USER_HOME/aEyes/eye/main.sh --service
 Restart=on-failure
 RestartSec=5s

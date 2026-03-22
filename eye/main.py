@@ -6,12 +6,12 @@ from eye_renderer import EyeRenderer
 from threading import Thread, Event, Lock
 from time import sleep
 
-from interfaces import ControlMessage, MessageType
+from data_types import ControlMessage, MessageType
 from motors.interfaces import MotorName, MotorSpeeds
 from motors.motors import Motors
 
 
-SOCKET_ADDRESS = "192.168.5.1"
+SOCKET_ADDRESS = "192.168.5.100"
 SOCKET_PORT = 9000
 
 class Eye:
