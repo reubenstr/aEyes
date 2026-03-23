@@ -111,6 +111,10 @@ Boot up each RPi and run the install.sh script to setup unique EYE_ID per RPi. U
 
 ## Mechanical
 
+The main.py script will not initialize the motors if the .motors-zeroed file flag has not been found.
+
+Use the zero.py script to zero the motors. When both motors have been zeroed the script will create the .motors-zered file flag allowing main.py to start
+
 After the hardware is fully assembled and each RPi's software is configured, set the zero position of each motor.
 Execute the zero.sh script per RPi.
 
@@ -143,4 +147,10 @@ sudo ./main.sh
 sudo ip link set can0 up type can bitrate 1000000
 sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
+```
+
+```bash
+sudo systemctl status main.service
+sudo journalctl -u main.service -f
+
 ```

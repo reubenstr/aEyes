@@ -32,13 +32,13 @@ from .interfaces import MotorName
         CAN is not able to set the torque limit, speed limit, etc. Only the UART interface is capable
         of setting these parameters. The torque limit is used to create 'compliance'. A best guess is implemented.
     
-    Software driver iver Notes:
+    Software driver Notes:
         Upon startup the motor driver reports angles 0 to 360 degrees.
         To prevent issues of wrong initial directions, this library
         uses a -180 to 180 convention.
         Start up angles > 180 flag an offset to match the desired convention.
 
-        Pid params are saved in RAM and must be applied after each power cycle.  
+        Pid params are saved in RAM and must be applied after each power cycle.
 """
 
 
@@ -63,7 +63,7 @@ class Motor:
         self.allow_comms: bool = allow_comms
         self.allow_motion: bool = allow_motion
         self.can_channel: str = can_channel
-        self.bus: Bus = bus
+        self.bus: Bus = bus     
 
         self.tag = f"[Motor][{name}]"
         self.prints_enabled: bool = False
@@ -100,7 +100,8 @@ class Motor:
         self.iq_pid_ki: int = 50  # Torque loop, default: 50
 
         # Other config:
-        self.apply_position_offset: bool = False
+        self.position_offset: float = 0.0
+        self.apply_180_offset: bool = False
         self.max_reply_timeouts_allow: int = 3
 
         self.ARBRITATION_BASE_OFFSET: int = 0x140
@@ -190,7 +191,8 @@ class Motor:
         """
 
         position = position * -1.0 if self.inverse_rotation else position
-        position = max(self.min_position, min(self.max_position, position))
+        position += self.position_offset
+        position = max(self.min_position + self.position_offset, min(self.max_position + self.position_offset, position))
 
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF
@@ -279,12 +281,13 @@ class Motor:
                     | (reply_data[4] << 32)  # Byte 4
                     | (reply_data[5] << 40)  # Byte 5
                     | (reply_data[6] << 48)  # Byte 6
-                    | (reply_data[7] << 56)
-                )  # Byte 7
+                    | (reply_data[7] << 56)  # Byte 7
+                ) 
 
                 converted_position_degrees = (self.convert_twos_compliment_64(raw_position) >> 8) / 1000.0
-                offset_position_degrees = converted_position_degrees - 360.0 if self.apply_position_offset else converted_position_degrees
-                self.position_degrees = offset_position_degrees * -1.0 if self.inverse_rotation else offset_position_degrees
+                converted_position_degrees = converted_position_degrees - 360.0 if self.apply_180_offset else converted_position_degrees
+                converted_position_degrees -= self.position_offset
+                self.position_degrees = converted_position_degrees * -1.0 if self.inverse_rotation else converted_position_degrees
 
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")
@@ -296,8 +299,11 @@ class Motor:
     def is_enabled(self) -> bool:
         return self.enabled
 
-    def set_apply_position_offset(self, value: bool):
-        self.apply_position_offset = value
+    def set_position_offset(self, value: float):
+        self.position_offset = value
+
+    def set_apply_180_offset(self, value: bool):
+        self.apply_180_offset = value
 
     def is_error(self) -> bool:
         return self.is_hardware_error() or self.is_comms_error()

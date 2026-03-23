@@ -4,11 +4,12 @@ import json
 import struct
 from eye_renderer import EyeRenderer
 from threading import Thread, Event, Lock
-from time import sleep
+from time import sleep, time
 
 from data_types import ControlMessage, MessageType
 from motors.interfaces import MotorName, MotorSpeeds
 from motors.motors import Motors
+from motors.motor_list import motor_list
 
 
 SOCKET_ADDRESS = "192.168.5.100"
@@ -56,10 +57,31 @@ class Eye:
 
         self.motors = Motors(allow_enable=self.motors_zeroed)
 
-        if self.motors_zeroed == True: 
+        if self.motors_zeroed == True:
             self.motors.enable_all_motors()
             self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
-            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)       
+
+            # Home EYE motor against endstop.
+            eye_motor = next(m for m in motor_list() if m.name == MotorName.EYE)
+            self.motors.motors[MotorName.EYE].min_position = -180.0
+            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=-180.0)
+
+            sleep(0.5)  # Allow motor to start moving before polling.
+            prev_pos = self.motors.get_motor_position(MotorName.EYE)
+            start = time()
+            timeout_seconds = 5.0
+            while time() - start < timeout_seconds:
+                sleep(0.100)
+                pos = self.motors.get_motor_position(MotorName.EYE)
+                print(pos)
+                if abs(pos - prev_pos) < 1.0:                  
+                    break
+                prev_pos = pos
+
+            current_pos = self.motors.motors[MotorName.EYE].position_degrees
+            self.motors.motors[MotorName.EYE].set_position_offset(-current_pos - eye_motor.home_position)
+            self.motors.motors[MotorName.EYE].min_position = eye_motor.min_position
+            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
             sleep(3)
 
     ###############################################################################

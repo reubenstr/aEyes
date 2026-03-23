@@ -174,6 +174,9 @@ class EyeRenderer:
         self.window.clear()
 
         if self.pending_text:
+            self.message_label.x = self.window.width // 2
+            self.message_label.y = self.window.height // 2
+            self.message_label.width = self.window.width
             self.message_label.text = self.pending_text
             self.message_label.draw()
             return

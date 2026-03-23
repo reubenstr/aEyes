@@ -63,7 +63,7 @@ class Motors:
                     allow_comms=motor.allow_comms,
                     allow_motion=motor.allow_motion,
                     can_channel=motor.can_channel,
-                    bus=self.can_infos[motor.can_channel].bus,
+                    bus=self.can_infos[motor.can_channel].bus,              
                 )
                 self.target_positions[motor.name] = 0  # Will be set during enable.
                 self.target_speeds[motor.name] = default_speed
@@ -274,7 +274,7 @@ class Motors:
             if motor.allow_comms:
                 motor.req_position()
                 if motor.position_degrees > 180.0:
-                    motor.set_apply_position_offset(True)
+                    motor.set_apply_180_offset(True)
                 self.target_positions[key] = motor.position_degrees
 
         print(f"[{self.tag}] starting motor worker threads")
@@ -303,12 +303,12 @@ class Motors:
             rotation += 1
             for key, motor in self.motors.items():
                 if motor.can_channel == can_info.can_channel:
-                    target_angle = self.target_positions[key]
+                    target_position = self.target_positions[key]
                     target_speed = self.target_speeds[key]                    
 
                     with can_info.lock:
                         if motor.allow_motion and motor.is_enabled():
-                            motor.cmd_set_angle_and_speed(position=target_angle, speed=target_speed)                           
+                            motor.cmd_set_angle_and_speed(position=target_position, speed=target_speed)                           
                             motor.req_position()
                             if rotation % 2 == 0:
                                 motor.req_state_1()
