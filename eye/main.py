@@ -12,7 +12,7 @@ from motors.motors import Motors
 from motors.motor_list import motor_list
 
 
-SOCKET_ADDRESS = "192.168.5.100"
+SOCKET_ADDRESS = "192.168.5.5"
 SOCKET_PORT = 9000
 
 class Eye:
@@ -54,10 +54,9 @@ class Eye:
             print("[Main] ERROR: .motors-zeroed file not found. Run zero.py first to zero the motors!")
             self.motors_zeroed = False
             return        
-
-        self.motors = Motors(allow_enable=self.motors_zeroed)
-
+       
         if self.motors_zeroed == True:
+            self.motors = Motors(allow_enable=self.motors_zeroed)
             self.motors.enable_all_motors()
             self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
 
@@ -151,7 +150,8 @@ class Eye:
     def shutdown(self):
         try:
             self.eye_renderer.shutdown()
-            self.motors.shutdown()
+            if self.motors_zeroed:
+                self.motors.shutdown()
             self.stop()
         except Exception:
             pass

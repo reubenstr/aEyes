@@ -37,7 +37,7 @@ class EyeRenderer:
         config.major_version = 3
         config.minor_version = 1
 
-        self.window = pyglet.window.Window(fullscreen=False, resizable=True, config=config)
+        self.window = pyglet.window.Window(fullscreen=True, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, config=config)
 
         self.pending_text = None
         self.message_label = pyglet.text.Label(

@@ -6,10 +6,6 @@ from dataclasses import dataclass, asdict
 from interfaces import ControlMessage
 from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to_linear
 
-from conversions import Conversions
-from detector import Detector
-
-
 SOCKET_ADDRESS = "*"
 SOCKET_PORT = 9000
 
@@ -19,9 +15,6 @@ REFRESH_RATE_HZ = 15
 class Controller:
     def __init__(self):
         self.running = True
-
-        self.detector = Detector()
-        self.conversions = Conversions()
 
         self.init_socket()
 
@@ -47,22 +40,7 @@ class Controller:
         yaw = 0.0
         pitch = 0.0
 
-        while self.running:
-
-            closest_point = self.detector.get_closest_point()
-            if closest_point is not None:
-                yaw, pitch = self.conversions.realsense_point_to_system(closest_point)
-
-                bound = 45.0
-                # yaw = max(-bound, min(yaw, bound))
-                # pitch = max(-bound, min(pitch, bound))
-
-                x, y, z = closest_point
-                print(
-                    f"Closest point: ({x:.3f}, {y:.3f}, {z:.3f}), "
-                    f"Yaw: {yaw:.2f}, Pitch: {pitch:.2f}"
-                )
-
+        while self.running:  
             t = time.time()
 
             phase = (t / cycle_duration) % len(palette)
@@ -89,13 +67,12 @@ class Controller:
             rotation_deg = 0
             eye_lid_position = 1
 
-
             iris_color = tuple([0, 157, 0])
             #cornea_color = tuple([0, 157, 0])
             ###################################
 
-            # yaw = ((math.sin(t) + 1) / 2) * 90 - 45
-            # pitch = ((math.sin(t) + 1) / 2) * 90 - 45
+            yaw = ((math.sin(t) + 1) / 2) * 90 - 45
+            pitch = ((math.sin(t) + 1) / 2) * 90 - 45
 
             messages = []
             for i in range(6):
@@ -120,8 +97,7 @@ class Controller:
             time.sleep(1 / REFRESH_RATE_HZ)
 
     def shutdown(self):
-        self.running = False
-        self.detector.shutdown()
+        self.running = False     
 
 
 ###############################################################################
