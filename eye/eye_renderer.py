@@ -42,6 +42,7 @@ class EyeRenderer:
         config.minor_version = 1
 
         self.window = pyglet.window.Window(fullscreen=True, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, config=config)
+        self.window.set_mouse_visible(False)
 
         self.pending_text = None
         self.pending_text_type = TextType.INFO

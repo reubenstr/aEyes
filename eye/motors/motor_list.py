@@ -35,6 +35,6 @@ def motor_list() -> List[MotorInfo]:
             inverse_rotation=True,
             allow_motion=True,
             allow_comms=True,
-            home_position=50.5 # Physical endstop position.
+            home_position=52.0 # Physical endstop position.
         ),
     ]
