@@ -24,6 +24,7 @@ class Controller:
     ###############################################################################
 
     def run(self):
+        frame_idx = 0
         while self.running:
             color_bgr, depth_u16, intr = self.detector.cam.get_aligned_frames()
             if color_bgr is None:
@@ -40,10 +41,16 @@ class Controller:
             for f in dets:
                 xyz = self.detector.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
                 if xyz is not None:
-                    detections.append(Detection(position=Position3D(x=xyz[0], y=xyz[1], z=xyz[2])))
+                    # Remap from RealSense camera frame (X=right, Y=down, Z=forward)
+                    # to system frame (X=forward, Y=left, Z=up)
+                    detections.append(Detection(position=Position3D(x=xyz[2], y=-xyz[0], z=-xyz[1])))
 
             tracked_faces = self.tracker.update(detections)
             eye_states = self.eye_mgr.update(tracked_faces)
+
+            assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
+            print(f"[frame {frame_idx}] detected={len(dets)}  tracked={len(tracked_faces)}  assigned={assigned}")
+            frame_idx += 1
 
             messages = {
                 eye_id: ControlMessage(

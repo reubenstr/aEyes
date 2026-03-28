@@ -10,7 +10,7 @@ from visual import PlotWindow
 from publisher import Publisher
 
 """
-    Generals demo face locations and passing data through the pipeline to the physical eye.
+    Generates demo face locations and passing data through the pipeline to the physical eyes.
     No camera or inference.
 
     sudo apt-get install -y libxcb-cursor0

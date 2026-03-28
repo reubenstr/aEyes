@@ -11,7 +11,7 @@ from motors.motors import Motors
 from motors.motor_list import motor_list
 
 
-SOCKET_ADDRESS = "192.168.5.5"
+SOCKET_ADDRESS = "192.168.5.1"
 SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
 

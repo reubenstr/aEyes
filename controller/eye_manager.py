@@ -122,6 +122,9 @@ class EyeManager:
                 state.yaw, state.pitch = self._conversions.get_pitch_yaw(
                     eye_id, tracked_faces[state.face_id]
                 )
+            else:
+                state.yaw = 0.0
+                state.pitch = 0.0
 
     # ------------------------------------------------------------------
     # Public API
