@@ -1,4 +1,6 @@
 import os
+import signal
+import sys
 import zmq
 import json
 from eye_renderer import EyeRenderer, TextType
@@ -113,13 +115,12 @@ class Eye:
 
     def adaptive_speed(self, motor_name, target):
         CLOSE_DEG = 5.0   # below this → full fast speed
-        FAR_DEG   = 20.0  # above this → full slow speed
+        FAR_DEG   = 30.0  # above this → full slow speed
         current = self.motors.get_motor_position(motor_name)
         if current is None:
             return MotorSpeeds.SLOW
         delta = abs(target - current)
-        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))
-        t = 1.0 - (1.0 - t) ** 2   # ease-out: smooth transition near FAR_DEG
+        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))      
         return int(MotorSpeeds.FAST + t * (MotorSpeeds.SLOW - MotorSpeeds.FAST))
 
 
@@ -224,6 +225,7 @@ class Eye:
 ###############################################################################
 if __name__ == "__main__":
     eye = Eye()
+    signal.signal(signal.SIGTERM, lambda sig, frame: (eye.shutdown(), sys.exit(0)))
     try:
         eye.run()
     except KeyboardInterrupt:

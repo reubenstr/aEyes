@@ -245,6 +245,7 @@ Environment=XAUTHORITY=$USER_HOME/.Xauthority
 ExecStart=$USER_HOME/aEyes/eye/main.sh --service
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=10s
 
 [Install]
 WantedBy=multi-user.target
