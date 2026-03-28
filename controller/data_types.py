@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Tuple
 
 EyeId = int
 FaceId = int
@@ -68,7 +68,19 @@ class EyeState:
     pitch: float = 0.0      # degrees
 
 
-EyeStates = dict[EyeId, EyeState]   
+EyeStates = dict[EyeId, EyeState]
+
+@dataclass
+class ControlMessage:
+    radius: float
+    rotation_deg: float
+    eye_lid_position: float
+    iris_color: Tuple[float, float, float]
+    cornea_color: Tuple[float, float, float]
+    is_cat_eye: bool
+    yaw: float
+    pitch: float
+
 
 @dataclass
 class Detection:

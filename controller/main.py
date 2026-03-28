@@ -3,7 +3,7 @@ import time
 import json
 import math
 from dataclasses import dataclass, asdict
-from interfaces import ControlMessage
+from data_types import ControlMessage
 from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to_linear
 
 SOCKET_ADDRESS = "*"

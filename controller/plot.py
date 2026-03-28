@@ -10,6 +10,10 @@ from data_types import CameraConfig, Detection, EyeConfig, Position3D
 from config import EYE_CONFIGS, CAMERA_CONFIG
 
 
+"""
+    Standalone plot for testing tracking and assignment algorithms.
+"""
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
