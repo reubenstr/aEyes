@@ -111,6 +111,18 @@ class Eye:
         except zmq.Again:
             pass
 
+    def adaptive_speed(self, motor_name, target):
+        CLOSE_DEG = 5.0   # below this → full fast speed
+        FAR_DEG   = 20.0  # above this → full slow speed
+        current = self.motors.get_motor_position(motor_name)
+        if current is None:
+            return MotorSpeeds.SLOW
+        delta = abs(target - current)
+        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))
+        t = 1.0 - (1.0 - t) ** 2   # ease-out: smooth transition near FAR_DEG
+        return int(MotorSpeeds.FAST + t * (MotorSpeeds.SLOW - MotorSpeeds.FAST))
+
+
     ###############################################################################
     # Thread
     ###############################################################################
@@ -162,9 +174,9 @@ class Eye:
                             self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
                             self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
 
-                            if self.motors:
-                                self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
-                                self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
+                            if self.motors:                                
+                                self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=self.adaptive_speed(MotorName.BASE, msg.yaw), position=msg.yaw)
+                                self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=self.adaptive_speed(MotorName.EYE, msg.pitch), position=msg.pitch)
 
                 except zmq.Again:
                     if connected and time() - last_msg_time > MESSAGE_TIMEOUT_SECONDS:

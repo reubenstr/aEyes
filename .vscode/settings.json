@@ -1,5 +1,11 @@
 {
-  "python.defaultInterpreterPath": "/home/pi/aEyes/eye/.venv/bin/python",
+  "python.defaultInterpreterPath": "/home/nvidia/aEyes/controller/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "/home/nvidia/aEyes/controller",
+    "/home/nvidia/aEyes/eye"
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.languageServer": "Pylance",
   "files.associations": {
     "*.frag": "glsl",
     "*.vert": "glsl",

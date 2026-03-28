@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -u
 
-SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+# DEV PC
+# SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+
+# JETSON
+SRC="/home/$USER/aEyes/eye/"
+
 DST="/home/eye/aEyes/eye/"
 
 HOSTS=(

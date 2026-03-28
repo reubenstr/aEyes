@@ -14,8 +14,8 @@ class Status(StrEnum):
 
 
 class MotorSpeeds(IntEnum):
-    SLOW = 500
-    MOTION = 1000
+    SLOW = 300
+    FAST = 10000
 
 
 class MotorName(StrEnum):

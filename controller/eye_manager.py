@@ -138,6 +138,10 @@ class EyeManager:
         # Assign eyes to faces
         assignments = self._eye_assigner.update(tracked_faces)
        
+        # Free colors for faces no longer tracked, so the pool doesn't exhaust
+        active_ids = set(tracked_faces.keys())
+        self._face_colors = {fid: c for fid, c in self._face_colors.items() if fid in active_ids}
+
         # Assign a color to any newly seen face_id
         for fid in assignments.values():
             if fid is not None and fid not in self._face_colors:
