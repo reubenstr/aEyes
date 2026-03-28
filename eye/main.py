@@ -6,7 +6,7 @@ from threading import Thread, Event
 from time import sleep, time
 
 from data_types import ControlMessage
-from motors.interfaces import MotorName, MotorSpeeds
+from motors.data_types import MotorName, MotorSpeeds
 from motors.motors import Motors
 from motors.motor_list import motor_list
 
@@ -58,25 +58,36 @@ class Eye:
             self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
 
             # Home EYE motor against endstop.
+            # Increase min and max positions for homing operation to accommodate any starting position. 
             eye_motor = next(m for m in motor_list() if m.name == MotorName.EYE)
             self.motors.motors[MotorName.EYE].min_position = -180.0
+            self.motors.motors[MotorName.EYE].max_position = 180.0
             self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=-180.0)
 
             sleep(0.5)  # Allow motor to start moving before polling.
             prev_pos = self.motors.get_motor_position(MotorName.EYE)
             start = time()
-            timeout_seconds = 5.0
-            while time() - start < timeout_seconds:
-                sleep(0.100)
+            operation_timeout_seconds = 5.0
+            home_started = None
+            home_duration = 0.5
+            home_threshold_deg = 0.25
+            while time() - start < operation_timeout_seconds:
+                sleep(0.050)
                 pos = self.motors.get_motor_position(MotorName.EYE)
                 print(pos)
-                if abs(pos - prev_pos) < 1.0:                  
-                    break
+                if abs(pos - prev_pos) < home_threshold_deg:
+                    if home_started is None:
+                        home_started = time()
+                    elif time() - home_started >= home_duration:
+                        break
+                else:
+                    home_started = None
                 prev_pos = pos
 
             current_pos = self.motors.motors[MotorName.EYE].position_degrees
             self.motors.motors[MotorName.EYE].set_position_offset(-current_pos - eye_motor.home_position)
             self.motors.motors[MotorName.EYE].min_position = eye_motor.min_position
+            self.motors.motors[MotorName.EYE].max_position = eye_motor.max_position
             self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)            
             sleep(3)
 

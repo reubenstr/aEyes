@@ -4,7 +4,7 @@ from rich import print
 from can.interface import Bus
 from typing import Optional
 
-from .interfaces import MotorName
+from .data_types import MotorName
 
 """
     Motor:

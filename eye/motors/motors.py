@@ -11,7 +11,7 @@ from typing import Dict, List
 
 from motors.motor import Motor
 from motors.motor_list import motor_list
-from motors.interfaces import CanInfo, MotorZeroInfo, Status, MotorName
+from motors.data_types import CanInfo, MotorZeroInfo, Status, MotorName
 
 
 """

@@ -12,7 +12,7 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.styles import Style
 
 from motors.motors import Motors
-from motors.interfaces import MotorZeroInfo
+from motors.data_types import MotorZeroInfo
 
 """
     This script creates an interface to zero the position of the motors.

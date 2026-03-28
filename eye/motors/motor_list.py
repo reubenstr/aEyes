@@ -1,5 +1,5 @@
 from typing import List
-from motors.interfaces import MotorInfo, MotorName
+from motors.data_types import MotorInfo, MotorName
 
 
 """
@@ -35,6 +35,6 @@ def motor_list() -> List[MotorInfo]:
             inverse_rotation=True,
             allow_motion=True,
             allow_comms=True,
-            home_position=50.5
+            home_position=50.5 # Physical endstop position.
         ),
     ]

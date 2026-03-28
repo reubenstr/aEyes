@@ -1,4 +1,4 @@
-import can
+from typing import Any
 from threading import Thread, Lock, Event
 from enum import IntEnum, Enum, StrEnum
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ class Status(StrEnum):
 
 class MotorSpeeds(IntEnum):
     SLOW = 500
-    MOTION = 10000
+    MOTION = 1000
 
 
 class MotorName(StrEnum):
@@ -39,7 +39,7 @@ class MotorInfo:
 @dataclass
 class CanInfo:
     can_channel: str
-    bus: can.interface.Bus
+    bus: Any
     status: Status
     thread_handle: Thread
     lock: Lock
