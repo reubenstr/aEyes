@@ -1,13 +1,12 @@
-import zmq
-import time
-import json
-import math
-from dataclasses import dataclass, asdict
-from data_types import ControlMessage
-from utilities import lerp, lerp_rgb, smoothstep, srgb_to_linear, rgb255_srgb_to_linear
+from __future__ import annotations
 
-SOCKET_ADDRESS = "*"
-SOCKET_PORT = 9000
+import time
+from data_types import Detection, Position3D, ControlMessage
+from detector import Detector
+from face_tracker import FaceTracker
+from eye_manager import EyeManager
+from config import EYE_CONFIGS, CAMERA_CONFIG
+from publisher import Publisher
 
 REFRESH_RATE_HZ = 15
 
@@ -15,86 +14,57 @@ REFRESH_RATE_HZ = 15
 class Controller:
     def __init__(self):
         self.running = True
-
-        self.init_socket()
-
-    ###############################################################################
-    # Initializers
-    ###############################################################################
-
-    def init_socket(self):
-        context = zmq.Context()
-        self.socket = context.socket(zmq.PUB)
-        address = f"tcp://{SOCKET_ADDRESS}:{SOCKET_PORT}"
-        self.socket.bind(address)
+        self.detector = Detector()
+        self.tracker = FaceTracker()
+        self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
+        self.publisher = Publisher()
 
     ###############################################################################
     # Main Loop
     ###############################################################################
 
     def run(self):
-        palette = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
-        i = 0
-        cycle_duration = 4.0
+        while self.running:
+            color_bgr, depth_u16, intr = self.detector.cam.get_aligned_frames()
+            if color_bgr is None:
+                continue
 
-        yaw = 0.0
-        pitch = 0.0
+            dets, _ = self.detector.det.detect(color_bgr)
 
-        while self.running:  
-            t = time.time()
+            # Convert FaceDetection (pixel bbox) → Detection (3D position in meters).
+            # The detector returns raw bounding boxes in image coordinates; face_xyz()
+            # back-projects the bbox centre through the RealSense depth frame using
+            # camera intrinsics to produce a metric Position3D.
+            # Faces where depth is unavailable or out of range are skipped.
+            detections = []
+            for f in dets:
+                xyz = self.detector.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
+                if xyz is not None:
+                    detections.append(Detection(position=Position3D(x=xyz[0], y=xyz[1], z=xyz[2])))
 
-            phase = (t / cycle_duration) % len(palette)
-            i0 = int(phase)
-            i1 = (i0 + 1) % len(palette)
+            tracked_faces = self.tracker.update(detections)
+            eye_states = self.eye_mgr.update(tracked_faces)
 
-            u = phase - i0
-            u = smoothstep(u)
-
-            r0, g0, b0 = palette[i0]
-            r1, g1, b1 = palette[i1]
-            r, g, b = lerp_rgb((r0, g0, b0), (r1, g1, b1), u)
-
-            # radius = 0.25 + 0.20 * math.sin(t * 0.8)
-            radius = (math.sin(t * 4) + 1) / 2
-
-            rotation_deg = 10.0 * math.sin(t * 0.3)
-            eye_lid_position = (math.sin(t) + 1) / 2
-            iris_color = tuple([int(r), int(g), int(b)])
-            cornea_color = tuple([255 - int(r), 255 - int(g), 255 - int(b)])
-
-            ###################################
-            radius = 0
-            rotation_deg = 0
-            eye_lid_position = 1
-
-            iris_color = tuple([0, 157, 0])
-            #cornea_color = tuple([0, 157, 0])
-            ###################################
-
-            yaw = ((math.sin(t) + 1) / 2) * 44 - 22
-            pitch = ((math.sin(t) + 1) / 2) * 44 - 22
-
-            messages = {}
-            for eye_id in range(1, 7):
-                messages[eye_id] = asdict(ControlMessage(
-                    radius=radius,
-                    rotation_deg=rotation_deg,
-                    eye_lid_position=eye_lid_position,
-                    iris_color=iris_color,
-                    cornea_color=cornea_color,
-                    is_cat_eye=False,
-                    yaw=yaw,
-                    pitch=pitch,
-                ))
-
-            message_str = json.dumps(messages)
-            self.socket.send_string(message_str)
-            # print("Sent:", message_str)
+            messages = {
+                eye_id: ControlMessage(
+                    radius=state.radius,
+                    rotation_deg=state.rotation,
+                    eye_lid_position=state.eye_lid,
+                    iris_color=(state.iris_color.red, state.iris_color.green, state.iris_color.blue),
+                    cornea_color=(state.striation_color.red, state.striation_color.green, state.striation_color.blue),
+                    is_cat_eye=state.is_cat_eye,
+                    yaw=state.yaw,
+                    pitch=state.pitch,
+                )
+                for eye_id, state in eye_states.items()
+            }
+            self.publisher.send(messages)
 
             time.sleep(1 / REFRESH_RATE_HZ)
 
     def shutdown(self):
-        self.running = False     
+        self.detector.shutdown()
+        self.running = False
 
 
 ###############################################################################

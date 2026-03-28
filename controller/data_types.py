@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 EyeId = int
 FaceId = int
@@ -48,8 +50,8 @@ class EyeAssignmentState:
     # (None means it is currently assigned)
     available_since: float | None = None
 
-TrackedFaces = dict[FaceId, Position3D]
-EyeAssignments = dict[EyeId, FaceId | None]
+TrackedFaces = Dict[FaceId, Position3D]
+EyeAssignments = Dict[EyeId, Optional[FaceId]]
 
 @dataclass
 class EyeState:
@@ -68,7 +70,7 @@ class EyeState:
     pitch: float = 0.0      # degrees
 
 
-EyeStates = dict[EyeId, EyeState]
+EyeStates = Dict[EyeId, EyeState]
 
 @dataclass
 class ControlMessage:

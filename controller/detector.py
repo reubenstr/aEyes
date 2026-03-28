@@ -12,6 +12,16 @@ import pyrealsense2 as rs
 import tensorrt as trt
 from cuda import cudart
 
+from data_types import Detection, Position3D, ControlMessage
+from face_tracker import FaceTracker
+from eye_manager import EyeManager
+from config import EYE_CONFIGS, CAMERA_CONFIG
+from publisher import Publisher
+
+"""
+    Face detections using Jetson Xavier NX with Realsense D435i depth camera.
+"""
+
 
 # ---------------------- User settings ----------------------
 ENGINE_PATH = "face_480_fp16.engine"
@@ -575,33 +585,6 @@ class Detector:
             output_groups=((1, 2), (4, 5), (7, 8)),
         )
 
-    def get_closest_point(self) -> Optional[Tuple[float, float, float]]:
-        color_bgr, depth_u16, intr = self.cam.get_aligned_frames()
-        if color_bgr is None:
-            return None
-
-        dets, _ = self.det.detect(color_bgr)
-
-        closest_point = None
-        min_dist = float("inf")
-
-        for f in dets:
-            xyz = self.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
-            if xyz is None:
-                continue
-
-            points = [xyz] if isinstance(xyz[0], (int, float)) else xyz
-
-            for x, y, z in points:
-                if not math.isfinite(x) or not math.isfinite(y) or not math.isfinite(z):
-                    continue
-                dist = x * x + y * y + z * z
-                if dist < min_dist:
-                    min_dist = dist
-                    closest_point = (x, y, z)
-
-        return closest_point
-
     def run_display(self):
         """Blocking loop: capture → detect → display with bounding boxes. Press q to quit."""
         window_name = "Face Detector"
@@ -673,23 +656,25 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def main():
+if __name__ == "__main__":
     args = _parse_args()
     detector = Detector()
     try:
         if args.display:
             detector.run_display()
         else:
-            # Headless loop — just print closest face.
+            # Headless loop — print all detections each frame.
             frame_idx = 0
             while True:
-                pt = detector.get_closest_point()
+                color_bgr, depth_u16, intr = detector.cam.get_aligned_frames()
+                if color_bgr is None:
+                    continue
+                dets, _ = detector.det.detect(color_bgr)
+                xyzs = [detector.cam.face_xyz(depth_u16, intr, f.bbox_xyxy) for f in dets]
                 frame_idx += 1
                 if frame_idx % PRINT_EVERY_N_FRAMES == 0:
-                    print(f"[frame {frame_idx}] closest={pt}")
+                    print(f"[frame {frame_idx}] {len(dets)} face(s)")
+                    for i, (f, xyz) in enumerate(zip(dets[:PRINT_TOP_K], xyzs[:PRINT_TOP_K])):
+                        print(f"  [{i}] score={f.score:.3f}  xyz={xyz}")
     finally:
         detector.shutdown()
-
-
-if __name__ == "__main__":
-    main()

@@ -1,24 +1,21 @@
 import signal
 import sys
-import zmq
-import json
 import math
-from dataclasses import asdict
 from PySide6 import QtCore, QtWidgets
 from data_types import ControlMessage, Detection, Position3D
 from face_tracker import FaceTracker
 from eye_manager import EyeManager
 from config import EYE_CONFIGS, CAMERA_CONFIG
 from visual import PlotWindow
+from publisher import Publisher
 
 """
-    Sends demo data to eyes and visualizers demo data.
+    Generals demo face locations and passing data through the pipeline to the physical eye.
+    No camera or inference.
 
     sudo apt-get install -y libxcb-cursor0
 """
 
-SOCKET_ADDRESS = "*"
-SOCKET_PORT = 9000
 REFRESH_RATE_HZ = 15
 
 
@@ -79,9 +76,7 @@ class Demo(QtCore.QObject):
         self.tracker = FaceTracker()
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
 
-        context = zmq.Context()
-        self.socket = context.socket(zmq.PUB)
-        self.socket.bind(f"tcp://{SOCKET_ADDRESS}:{SOCKET_PORT}")
+        self.publisher = Publisher()
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -92,9 +87,8 @@ class Demo(QtCore.QObject):
         tracked_faces = self.tracker.update(dets)
         eye_states = self.eye_mgr.update(tracked_faces)
 
-        messages = {}
-        for eye_id, state in eye_states.items():
-            messages[eye_id] = asdict(ControlMessage(
+        messages = {
+            eye_id: ControlMessage(
                 radius=state.radius,
                 rotation_deg=state.rotation,
                 eye_lid_position=state.eye_lid,
@@ -103,8 +97,10 @@ class Demo(QtCore.QObject):
                 is_cat_eye=state.is_cat_eye,
                 yaw=state.yaw,
                 pitch=state.pitch,
-            ))
-        self.socket.send_string(json.dumps(messages))
+            )
+            for eye_id, state in eye_states.items()
+        }
+        self.publisher.send(messages)
 
         self.window.push_frame(self.frame % 500, tracked_faces, eye_states)
         self.frame += 1

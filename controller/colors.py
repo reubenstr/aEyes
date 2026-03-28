@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from data_types import Color
 
 RED = Color(255,   0,   0)
