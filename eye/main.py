@@ -1,9 +1,8 @@
 import os
 import zmq
 import json
-import struct
 from eye_renderer import EyeRenderer
-from threading import Thread, Event, Lock
+from threading import Thread, Event
 from time import sleep, time
 
 from data_types import ControlMessage, MessageType
@@ -14,10 +13,15 @@ from motors.motor_list import motor_list
 
 SOCKET_ADDRESS = "192.168.5.5"
 SOCKET_PORT = 9000
+MESSAGE_TIMEOUT_SECONDS = 3.0
 
 class Eye:
     def __init__(self):
-        pass
+        self.eye_id = None
+        self.motors = None
+        self.motors_zeroed = False
+        self.socket = None
+        self.thread_handle = None
 
     ###############################################################################
     # Initializers
@@ -28,17 +32,8 @@ class Eye:
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
         self.eye_renderer.set_message(MessageType.INFO, 'Waiting for data.')
-
-    def init_socket(self):
-        print("[Main] init zmq")
-        context = zmq.Context()
-        self.socket = context.socket(zmq.SUB)
-        address = f"tcp://{SOCKET_ADDRESS}:{SOCKET_PORT}"
-        self.socket.connect(address)
-        self.socket.setsockopt_string(zmq.SUBSCRIBE, "")
-        print(f"[Main] Socket requested at address: {address}")
-
-    def init_local(self):      
+   
+    def _init_local(self):      
         print("[Main] initialize local variables")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
@@ -46,7 +41,7 @@ class Eye:
         else:    
             self.eye_id = int(eye_id)
 
-    def init_motors(self):
+    def _init_motors(self):
         print("[Main] initialize motors")
         if os.path.exists(".motors-zeroed"):
             self.motors_zeroed = True
@@ -56,6 +51,8 @@ class Eye:
             return        
        
         if self.motors_zeroed == True:
+            self.eye_renderer.set_message(MessageType.INFO, 'Zeroing motors...')
+
             self.motors = Motors(allow_enable=self.motors_zeroed)
             self.motors.enable_all_motors()
             self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
@@ -80,14 +77,34 @@ class Eye:
             current_pos = self.motors.motors[MotorName.EYE].position_degrees
             self.motors.motors[MotorName.EYE].set_position_offset(-current_pos - eye_motor.home_position)
             self.motors.motors[MotorName.EYE].min_position = eye_motor.min_position
-            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
+            self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)            
             sleep(3)
+
+    def _init_socket(self):
+        print("[Main] init zmq")
+        context = zmq.Context()
+        self.socket = context.socket(zmq.SUB)
+        address = f"tcp://{SOCKET_ADDRESS}:{SOCKET_PORT}"
+        self.socket.connect(address)
+        self.socket.setsockopt_string(zmq.SUBSCRIBE, "")
+        print(f"[Main] Socket requested at address: {address}")
+
+    ###############################################################################
+    # Helpers
+    ###############################################################################
+    
+    def _flush_socket(self):
+        try:
+            while True:
+                self.socket.recv_string(flags=zmq.NOBLOCK)
+        except zmq.Again:
+            pass
 
     ###############################################################################
     # Thread
     ###############################################################################
 
-    def start(self):
+    def _start(self):
         print(f"[Main] worker thread starting")
         self.exit_event: Event = Event()
         self.thread_handle = Thread(target=self._worker)
@@ -101,35 +118,50 @@ class Eye:
 
     def _worker(self):
         self.exit_event.clear()
+        last_msg_time = time()
+        connected = False
+        self.eye_renderer.set_message(MessageType.INFO, 'Waiting for data.')
+        self._flush_socket()
 
         while not self.exit_event.is_set():
-            if self.motors_zeroed == False:
+            if not self.motors_zeroed:
                 self.eye_renderer.set_message(MessageType.ERROR, 'Motors not zeroed!')
             elif self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
-                    msg_json = json.loads(msg_raw)                   
-                    messages = [ControlMessage(**msg) for msg in msg_json]
-                  
-                    if self.eye_id:  
-                        msg = messages[self.eye_id]                  
+                    msg_json = json.loads(msg_raw)
 
-                        self.eye_renderer.set_message(MessageType.INFO, '')
-                        self.eye_renderer.set_radius(msg.radius)
-                        self.eye_renderer.set_rotation_deg(msg.rotation_deg)
-                        self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
-                        self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
-                        self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
-                        self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)                          
-                     
-                        # print(msg.yaw, msg.pitch)
+                    if self.eye_id is not None:
+                        if str(self.eye_id) not in msg_json:
+                            print(f"[Main] WARNING: eye_id {self.eye_id} not found in message.")
+                            self.eye_renderer.set_message(MessageType.ERROR, f'Eye ID {self.eye_id} not found in message!')
+                        else:
+                            msg = ControlMessage(**msg_json[str(self.eye_id)])
 
-                        self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
-                        self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
-                       
+                            last_msg_time = time()
+                            if not connected:
+                                connected = True
+                                print("[Main] Controller connected.")
+
+                            self.eye_renderer.set_message(MessageType.INFO, '')
+                            self.eye_renderer.set_radius(msg.radius)
+                            self.eye_renderer.set_rotation_deg(msg.rotation_deg)
+                            self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
+                            self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
+                            self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
+                            self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
+
+                            if self.motors:
+                                self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.MOTION, position=msg.yaw)
+                                self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.MOTION, position=msg.pitch)
+
                 except zmq.Again:
-                    # No message available.
-                    pass 
+                    if connected and time() - last_msg_time > MESSAGE_TIMEOUT_SECONDS:
+                        connected = False
+                        print("[Main] Controller disconnected (timeout).")
+                        self.eye_renderer.set_message(MessageType.ERROR, 'Data timeout!')
+                except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    print(f"[Main] Bad message: {e}")
 
             sleep(0.005)
 
@@ -137,24 +169,31 @@ class Eye:
     # General
     ###############################################################################
 
+    def _deferred_init(self):
+        sleep(0.3)  # Allow pyglet event loop to render first frame       
+        self._init_local()
+        self._init_motors()
+        self._init_socket()
+        self._start()
+
     def run(self):
-        self.init_eye_renderer()    
-        self.init_socket()
-        self.init_local()
-        self.init_motors()
-        self.start()
+        self.init_eye_renderer()
+        Thread(target=self._deferred_init, daemon=True).start()
 
         # Blocking
         self.eye_renderer.run()
 
     def shutdown(self):
+        self.stop()
+        if self.motors_zeroed and self.motors:
+            try:
+                self.motors.shutdown()
+            except Exception as e:
+                print(f"[Main] Error shutting down motors: {e}")
         try:
             self.eye_renderer.shutdown()
-            if self.motors_zeroed:
-                self.motors.shutdown()
-            self.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Main] Error shutting down renderer: {e}")
  
 
 ###############################################################################

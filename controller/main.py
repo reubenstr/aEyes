@@ -74,23 +74,20 @@ class Controller:
             yaw = ((math.sin(t) + 1) / 2) * 90 - 45
             pitch = ((math.sin(t) + 1) / 2) * 90 - 45
 
-            messages = []
-            for i in range(6):
-                messages.append(
-                    ControlMessage(
-                        radius=radius,
-                        rotation_deg=rotation_deg,
-                        eye_lid_position=eye_lid_position,
-                        iris_color=iris_color,
-                        cornea_color=cornea_color,
-                        is_cat_eye=False,
-                        yaw=yaw,
-                        pitch=pitch,
-                    )
-                )
+            messages = {}
+            for eye_id in range(1, 7):
+                messages[eye_id] = asdict(ControlMessage(
+                    radius=radius,
+                    rotation_deg=rotation_deg,
+                    eye_lid_position=eye_lid_position,
+                    iris_color=iris_color,
+                    cornea_color=cornea_color,
+                    is_cat_eye=False,
+                    yaw=yaw,
+                    pitch=pitch,
+                ))
 
-            message_list = [asdict(m) for m in messages]
-            message_str = json.dumps(message_list)
+            message_str = json.dumps(messages)
             self.socket.send_string(message_str)
             # print("Sent:", message_str)
 

@@ -5,7 +5,7 @@
 https://www.amazon.com/dp/B0FG3HMCVY
 
 
-Frame: 2020 extrusion European Standard
+Frame: 2020 V-Slot (Euro Standard will work as well)
 
 
 ## Bolts
@@ -112,3 +112,9 @@ Note: these positions were placed prior increasing the main vertical frame membe
 
 Motor for vertical orientation:
     Testing: 58cm from end of connectors
+
+
+### MISC
+
+current motor wire length: 170mm 
+
