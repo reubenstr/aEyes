@@ -1,8 +1,7 @@
 import time
 import ctypes
+from enum import Enum, auto
 from pathlib import Path
-
-from data_types import MessageType
 
 import pyglet
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
@@ -10,6 +9,11 @@ pyglet.options.shadow_window = False
 pyglet.options["backend"] = "egl"  # Raspberry Pi EGL
 from pyglet import gl
 from pyglet.graphics.shader import Shader, ShaderProgram
+
+
+class TextType(Enum):
+    INFO = auto()
+    ERROR = auto()
 
 
 class EyeRenderer:
@@ -40,7 +44,8 @@ class EyeRenderer:
         self.window = pyglet.window.Window(fullscreen=True, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, config=config)
 
         self.pending_text = None
-        self.message_label = pyglet.text.Label(
+        self.pending_text_type = TextType.INFO
+        self.text_label = pyglet.text.Label(
             "",
             font_name="Monospace",
             font_size=18,
@@ -85,11 +90,8 @@ class EyeRenderer:
     def set_is_cat_eye(self, value: bool) -> None:
         self.is_cat_eye = bool(value)
 
-    def set_message(self, msgType: MessageType, text: str) -> None:
-        if msgType == MessageType.ERROR:
-            self.message_label.color = (255, 80, 80, 255)
-        else:
-            self.message_label.color = (225, 225, 225, 255)
+    def set_text(self, msgType: TextType, text: str) -> None:
+        self.pending_text_type = msgType
         self.pending_text = text
 
     def run(self) -> None:
@@ -174,11 +176,12 @@ class EyeRenderer:
         self.window.clear()
 
         if self.pending_text:
-            self.message_label.x = self.window.width // 2
-            self.message_label.y = self.window.height // 2
-            self.message_label.width = self.window.width
-            self.message_label.text = self.pending_text
-            self.message_label.draw()
+            self.text_label.color = (255, 80, 80, 255) if self.pending_text_type == TextType.ERROR else (225, 225, 225, 255)
+            self.text_label.x = self.window.width // 2
+            self.text_label.y = self.window.height // 2
+            self.text_label.width = self.window.width
+            self.text_label.text = self.pending_text
+            self.text_label.draw()
             return
 
         if self._program is None:

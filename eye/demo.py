@@ -2,15 +2,24 @@ import math
 import time
 from threading import Thread
 from time import sleep
-
 from eye_renderer import EyeRenderer
+from eye_renderer import TextType
 
+"""
+    Eye renderer demo.
 
+    To run:
+        cd ./aEyes/eye
+        source ./.venv/bin/activate
+        python3 ./demo.py 
+"""
 
 def loop(renderer: EyeRenderer) -> None:
-
-    # renderer.set_message(MessageType.ERROR, 'Error message')
-    # renderer.set_message(MessageType.INFO, 'Info message')
+    renderer.set_text(TextType.INFO, 'Demo info message.')
+    sleep(1)
+    renderer.set_text(TextType.ERROR, 'Demo error message.')
+    sleep(1)
+    renderer.set_text(TextType.INFO, '')
 
     while(True):
         t = time.time()

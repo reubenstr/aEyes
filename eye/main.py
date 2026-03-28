@@ -1,11 +1,11 @@
 import os
 import zmq
 import json
-from eye_renderer import EyeRenderer
+from eye_renderer import EyeRenderer, TextType
 from threading import Thread, Event
 from time import sleep, time
 
-from data_types import ControlMessage, MessageType
+from data_types import ControlMessage
 from motors.interfaces import MotorName, MotorSpeeds
 from motors.motors import Motors
 from motors.motor_list import motor_list
@@ -31,13 +31,13 @@ class Eye:
         print("[Main] init eye renderer")
         self.eye_renderer = EyeRenderer()
         self.eye_renderer.window.on_close = self.shutdown
-        self.eye_renderer.set_message(MessageType.INFO, 'Waiting for data.')
+        self.eye_renderer.set_text(TextType.INFO, 'Waiting for data.')
    
     def _init_local(self):      
         print("[Main] initialize local variables")
         eye_id = os.getenv("EYE_ID", None)
         if eye_id is None:
-            self.eye_renderer.set_message(MessageType.ERROR, "EYE_ID not found in ENV vars!")
+            self.eye_renderer.set_text(TextType.ERROR, "EYE_ID not found in ENV vars!")
         else:    
             self.eye_id = int(eye_id)
 
@@ -51,7 +51,7 @@ class Eye:
             return        
        
         if self.motors_zeroed == True:
-            self.eye_renderer.set_message(MessageType.INFO, 'Zeroing motors...')
+            self.eye_renderer.set_text(TextType.INFO, 'Zeroing motors...')
 
             self.motors = Motors(allow_enable=self.motors_zeroed)
             self.motors.enable_all_motors()
@@ -120,12 +120,12 @@ class Eye:
         self.exit_event.clear()
         last_msg_time = time()
         connected = False
-        self.eye_renderer.set_message(MessageType.INFO, 'Waiting for data.')
+        self.eye_renderer.set_text(TextType.INFO, 'Waiting for data.')
         self._flush_socket()
 
         while not self.exit_event.is_set():
             if not self.motors_zeroed:
-                self.eye_renderer.set_message(MessageType.ERROR, 'Motors not zeroed!')
+                self.eye_renderer.set_text(TextType.ERROR, 'Motors not zeroed!')
             elif self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -134,7 +134,7 @@ class Eye:
                     if self.eye_id is not None:
                         if str(self.eye_id) not in msg_json:
                             print(f"[Main] WARNING: eye_id {self.eye_id} not found in message.")
-                            self.eye_renderer.set_message(MessageType.ERROR, f'Eye ID {self.eye_id} not found in message!')
+                            self.eye_renderer.set_text(TextType.ERROR, f'Eye ID {self.eye_id} not found in message!')
                         else:
                             msg = ControlMessage(**msg_json[str(self.eye_id)])
 
@@ -143,7 +143,7 @@ class Eye:
                                 connected = True
                                 print("[Main] Controller connected.")
 
-                            self.eye_renderer.set_message(MessageType.INFO, '')
+                            self.eye_renderer.set_text(TextType.INFO, '')
                             self.eye_renderer.set_radius(msg.radius)
                             self.eye_renderer.set_rotation_deg(msg.rotation_deg)
                             self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
@@ -159,7 +159,7 @@ class Eye:
                     if connected and time() - last_msg_time > MESSAGE_TIMEOUT_SECONDS:
                         connected = False
                         print("[Main] Controller disconnected (timeout).")
-                        self.eye_renderer.set_message(MessageType.ERROR, 'Data timeout!')
+                        self.eye_renderer.set_text(TextType.ERROR, 'Data timeout!')
                 except (json.JSONDecodeError, TypeError, KeyError) as e:
                     print(f"[Main] Bad message: {e}")
 

@@ -71,8 +71,8 @@ class Controller:
             #cornea_color = tuple([0, 157, 0])
             ###################################
 
-            yaw = ((math.sin(t) + 1) / 2) * 90 - 45
-            pitch = ((math.sin(t) + 1) / 2) * 90 - 45
+            yaw = ((math.sin(t) + 1) / 2) * 44 - 22
+            pitch = ((math.sin(t) + 1) / 2) * 44 - 22
 
             messages = {}
             for eye_id in range(1, 7):
