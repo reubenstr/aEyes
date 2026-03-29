@@ -98,21 +98,26 @@ def get_detections(frame: int) -> list[Detection]:
         y=-0.5 + 0.4 * math.cos(t * 1.2),
         z=0.2 + 0.3 * math.sin(t * 0.8),
     ))
+    face_static = Detection(position=Position3D(
+        x=1.5,
+        y=0.4,
+        z=0.3,
+    ))
 
     if frame < 10:
-        return [face_a, face_b, face_c, face_d]
+        return [face_static, face_a, face_b, face_c, face_d]
     elif frame < 20:
-        return [face_b, face_c, face_d]
+        return [face_static, face_b, face_c, face_d]
     elif frame < 30:
-        return [face_b, face_c, face_d, face_e]
+        return [face_static, face_b, face_c, face_d, face_e]
     elif frame < 40:
-        return [face_b, face_d, face_e]
+        return [face_static, face_b, face_d, face_e]
     elif frame < 100:
-        return [face_b, face_a]
+        return [face_static, face_b, face_a]
     elif frame < 130:
-       return [face_b] 
+        return [face_static, face_b]
     else:
-        return [face_b, face_a]
+        return [face_static, face_b, face_a]
 
 
 # ---------------------------------------------------------------------------

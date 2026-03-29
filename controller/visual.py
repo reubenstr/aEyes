@@ -314,7 +314,7 @@ class PlotWindow(QtWidgets.QMainWindow):
         layout.setSpacing(8)
 
         self.view = gl.GLViewWidget(self)
-        self.view.setBackgroundColor((14, 14, 18))
+        self.view.setBackgroundColor((38, 38, 46))
         self.view.opts["center"] = pg.Vector(1.3, 0.0, 0.0)
         self.view.setCameraPosition(distance=6.0, elevation=18.0, azimuth=-35.0)
         layout.addWidget(self.view, 1)
@@ -374,7 +374,7 @@ class PlotWindow(QtWidgets.QMainWindow):
         grid.setSize(x=X_LIMITS[1] - X_LIMITS[0], y=Y_LIMITS[1] - Y_LIMITS[0])
         grid.setSpacing(x=0.5, y=0.5)
         grid.translate((X_LIMITS[0] + X_LIMITS[1]) / 2.0, 0.0, Z_LIMITS[0])
-        grid.setColor((90, 90, 96, 90))
+        grid.setColor((140, 140, 150, 130))
         self.view.addItem(grid)
 
         for segment in build_bounds_box():
@@ -390,7 +390,7 @@ class PlotWindow(QtWidgets.QMainWindow):
         for segment in build_camera_frustum(CAMERA_CONFIG):
             item = gl.GLLinePlotItem(
                 pos=segment,
-                color=(0.35, 0.55, 1.0, 0.35),
+                color=(1.0, 0.85, 0.0, 0.6),
                 width=1.0,
                 antialias=True,
                 mode="line_strip",
