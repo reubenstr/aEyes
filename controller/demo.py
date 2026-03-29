@@ -8,6 +8,7 @@ from eye_manager import EyeManager
 from config import EYE_CONFIGS, CAMERA_CONFIG
 from visual import PlotWindow
 from publisher import Publisher
+from parameters import params as _params
 
 """
     Generates demo face locations and passing data through the pipeline to the physical eyes.
@@ -15,8 +16,6 @@ from publisher import Publisher
 
     sudo apt-get install -y libxcb-cursor0
 """
-
-REFRESH_RATE_HZ = 15
 
 
 def get_detections(frame: int) -> list[Detection]:
@@ -80,7 +79,7 @@ class Demo(QtCore.QObject):
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(1000 // REFRESH_RATE_HZ)
+        self.timer.start(1000 // _params.system.refresh_rate_hz)
 
     def _tick(self) -> None:
         dets = get_detections(self.frame % 500)

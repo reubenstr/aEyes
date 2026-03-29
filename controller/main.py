@@ -7,8 +7,7 @@ from face_tracker import FaceTracker
 from eye_manager import EyeManager
 from config import EYE_CONFIGS, CAMERA_CONFIG
 from publisher import Publisher
-
-REFRESH_RATE_HZ = 15
+from parameters import params as _params
 
 
 class Controller:
@@ -67,7 +66,7 @@ class Controller:
             }
             self.publisher.send(messages)
 
-            time.sleep(1 / REFRESH_RATE_HZ)
+            time.sleep(1 / _params.system.refresh_rate_hz)
 
     def shutdown(self):
         self.detector.shutdown()

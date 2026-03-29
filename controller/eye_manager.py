@@ -8,6 +8,7 @@ from data_types import CameraConfig, Color, FaceId, EyeAssignments, EyeConfig, E
 from colors import COLOR_POOL, GREY
 from conversions import Conversions
 from eye_assigner import EyeAssigner
+from parameters import params as _params
 
 class EyeManager:
     """
@@ -23,14 +24,13 @@ class EyeManager:
       and converted to a per-frame factor via 1 - exp(-speed * dt), so
       behaviour is identical regardless of update call rate.
     """
-    
-    # Higher = faster transition.  e.g. 3.0 ≈ 95% complete in ~1 second.
-    COLOR_IN_RATE  = 2.0   # speed toward a face color
-    COLOR_OUT_RATE = 4.0   # speed back toward grey
-    
-    BLINK_RATE      = 1.0   # complete blinks per second (1.0 = 1 second per blink)
 
     def __init__(self, eye_configs: list[EyeConfig], camera_config: CameraConfig) -> None:
+        p = _params.eye_manager
+        # Higher = faster transition.  e.g. 3.0 ≈ 95% complete in ~1 second.
+        self.COLOR_IN_RATE  = p.color_in_rate   # speed toward a face color
+        self.COLOR_OUT_RATE = p.color_out_rate  # speed back toward grey
+        self.BLINK_RATE     = p.blink_rate      # complete blinks per second
 
         self._eye_assigner = EyeAssigner(eye_configs)
 

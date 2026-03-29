@@ -9,6 +9,7 @@ from typing import Optional
 
 from data_types import Detection, FaceId, Position3D, TrackedFaces
 from kalman_filter_3d import KalmanFilter3D
+from parameters import params as _params
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +65,8 @@ class Track:
             if self.embedding is None:
                 self.embedding = embedding.copy()
             else:
-                self.embedding = 0.7 * self.embedding + 0.3 * embedding
+                keep = _params.tracker.embedding_ema_keep
+                self.embedding = keep * self.embedding + (1 - keep) * embedding
                 norm = np.linalg.norm(self.embedding)
                 if norm > 0:
                     self.embedding /= norm
@@ -101,24 +103,22 @@ class Track:
 # ---------------------------------------------------------------------------
 
 class FaceTracker:
-    # Matching
-    base_max_distance  = 0.4    # metres at 1m depth
-    depth_scale_factor = 0.15   # extra distance per metre of depth
-    embedding_weight   = 0.3    # 0 = position only, 1 = embedding only
-
-    # Track lifecycle
-    min_hits_to_confirm   = 3   # tentative → confirmed
-    max_missing_confirmed = 15  # frames before confirmed track is dropped
-    max_missing_tentative = 2   # frames before tentative track is dropped
-
-    # Re-identification
-    reid_window_frames = 30     # how long to keep lost tracks for re-ID
-    reid_max_distance  = 0.8    # wider search radius for re-ID
-
-    # Smoothing
-    ema_alpha = 0.4
-
     def __init__(self):
+        p = _params.tracker
+        # Matching
+        self.base_max_distance  = p.base_max_distance
+        self.depth_scale_factor = p.depth_scale_factor
+        self.embedding_weight   = p.embedding_weight
+        # Track lifecycle
+        self.min_hits_to_confirm   = p.min_hits_to_confirm
+        self.max_missing_confirmed = p.max_missing_confirmed
+        self.max_missing_tentative = p.max_missing_tentative
+        # Re-identification
+        self.reid_window_frames = p.reid_window_frames
+        self.reid_max_distance  = p.reid_max_distance
+        # Smoothing
+        self.ema_alpha = p.ema_alpha
+
         self.tracks: dict[FaceId, Track] = {}
         self.lost_tracks: list[tuple[int, Track]] = []  # (frames_since_lost, track)
         self._next_id: FaceId = 0

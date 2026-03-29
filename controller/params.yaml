@@ -1,0 +1,60 @@
+# Behavioral parameters for the aEyes controller.
+# Edit this file to tune the system without touching Python source.
+# Physical/geometric constants (eye positions, pivot offsets, FOV) live in config.py.
+
+# ---------------------------------------------------------------------------
+# System timing
+# ---------------------------------------------------------------------------
+system:
+  refresh_rate_hz: 15        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
+
+# ---------------------------------------------------------------------------
+# Network / ZMQ publisher
+# ---------------------------------------------------------------------------
+publisher:
+  socket_port: 9000          # ZMQ PUB port. Must match SOCKET_PORT on all Pi eye units.
+  socket_address: "*"        # Bind address. "*" = all interfaces.
+
+# ---------------------------------------------------------------------------
+# Face tracker — matching gate
+# ---------------------------------------------------------------------------
+tracker:
+  base_max_distance: 0.4     # Match gate radius at 1m depth [m].  range: 0.1–1.0
+  depth_scale_factor: 0.15   # Gate growth per meter of depth [m/m].  range: 0.0–0.5
+  embedding_weight: 0.3      # 0=position-only matching, 1=embedding-only.  range: 0–1
+
+  # Track lifecycle (all in frames)
+  min_hits_to_confirm: 3     # Frames before tentative → confirmed.  range: 1–10
+  max_missing_confirmed: 15  # Frames a confirmed track survives without detection.  range: 5–30
+  max_missing_tentative: 2   # Frames a tentative track survives without detection.  range: 1–5
+
+  # Re-identification
+  reid_window_frames: 30     # Frames a lost track is retained for re-ID.  range: 10–60
+  reid_max_distance: 0.8     # Spatial search radius for re-ID matching [m].  range: 0.5–2.0
+
+  # Output smoothing
+  ema_alpha: 0.4             # EMA smoothing on output position. Lower = smoother, laggier.  range: 0–1
+  embedding_ema_keep: 0.7    # Weight of existing embedding in running average.  range: 0–1
+                             # New embedding weight = 1 - embedding_ema_keep.
+
+# ---------------------------------------------------------------------------
+# Kalman filter (3D constant-velocity)
+# ---------------------------------------------------------------------------
+kalman:
+  process_noise: 0.1         # Process noise (q). Higher = tracks react faster but noisier.
+  measurement_noise_xy: 0.05 # X/Y position measurement noise [m]. Lower = trust sensor more.
+  measurement_noise_z: 0.20  # Depth measurement noise [m]. Higher = trust depth less.
+
+# ---------------------------------------------------------------------------
+# Eye assigner
+# ---------------------------------------------------------------------------
+assigner:
+  assign_interval_s: 1.0     # Min seconds between assigning extra eyes to already-covered faces.
+
+# ---------------------------------------------------------------------------
+# Eye manager — animation
+# ---------------------------------------------------------------------------
+eye_manager:
+  color_in_rate: 2.0         # Lerp speed toward face color [units/s]. Higher = faster.
+  color_out_rate: 4.0        # Lerp speed back toward grey [units/s].
+  blink_rate: 1.0            # Blink animation speed on new face assignment [blinks/s].

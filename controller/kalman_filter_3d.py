@@ -1,6 +1,7 @@
 import numpy as np
 
 from data_types import Position3D
+from parameters import params as _params
 
 
 class KalmanFilter3D:
@@ -32,16 +33,17 @@ class KalmanFilter3D:
         self.P = np.eye(6) * 1.0
 
         # Process noise (tune for how dynamic faces move)
-        q = 0.1
-        self.Q = np.eye(6) * q
+        self.Q = np.eye(6) * _params.kalman.process_noise
 
         # Anisotropic measurement noise: Z (depth) is noisier on OAK-D than X/Y.
         # Higher R[2,2] tells the filter to trust depth readings less and rely
         # more on its own prediction — keeps tracks stable during noisy depth
         # frames and makes re-linking after a brief miss much more reliable.
-        r_xy = 0.05   # spatial noise (metres) — tune to your camera
-        r_z  = 0.20   # depth noise — increase if Z readings are very jittery
-        self.R = np.diag([r_xy, r_xy, r_z])
+        self.R = np.diag([
+            _params.kalman.measurement_noise_xy,
+            _params.kalman.measurement_noise_xy,
+            _params.kalman.measurement_noise_z,
+        ])
 
     def predict(self) -> Position3D:
         """Predict next state. Returns predicted position."""

@@ -11,6 +11,7 @@ from data_types import (
     EyeAssignmentState,
     TrackedFaces,
 )
+from parameters import params as _params
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,7 @@ class EyeAssigner:
     def __init__(
         self,
         eye_configs: list[EyeConfig],
-        assign_interval_s: float = 1.0,
+        assign_interval_s: float = _params.assigner.assign_interval_s,
     ) -> None:
         if len({c.eye_id for c in eye_configs}) != len(eye_configs):
             raise ValueError("EyeConfig eye_id values must be unique.")

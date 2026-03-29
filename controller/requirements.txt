@@ -1,4 +1,5 @@
 contourpy==1.3.3
+pyyaml
 cycler==0.12.1
 fonttools==4.62.1
 kiwisolver==1.5.0

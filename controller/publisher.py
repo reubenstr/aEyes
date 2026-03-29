@@ -3,13 +3,15 @@ import json
 from dataclasses import asdict
 from typing import Dict
 from data_types import ControlMessage
-
-SOCKET_ADDRESS = "*"
-SOCKET_PORT = 9000
+from parameters import params as _params
 
 
 class Publisher:
-    def __init__(self, address: str = SOCKET_ADDRESS, port: int = SOCKET_PORT):
+    def __init__(
+        self,
+        address: str = _params.publisher.socket_address,
+        port: int = _params.publisher.socket_port,
+    ):
         context = zmq.Context()
         self.socket = context.socket(zmq.PUB)
         self.socket.bind(f"tcp://{address}:{port}")
