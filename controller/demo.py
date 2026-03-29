@@ -87,6 +87,8 @@ class Demo(QtCore.QObject):
         self.timer.start(1000 // _params.system.refresh_rate_hz)
 
     def _tick(self) -> None:
+        if self.window.paused:
+            return
         dets = get_detections(self.frame % 500)
         tracked_faces = self.tracker.update(dets)
         eye_states = self.eye_mgr.update(tracked_faces)

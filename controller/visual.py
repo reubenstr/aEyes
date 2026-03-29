@@ -468,7 +468,7 @@ class PlotWindow(QtWidgets.QMainWindow):
 
         for track_id, tf in tracked_faces.items():
             pos = tf.position
-            label = f"ID {track_id} [STATIC]" if tf.is_static else f"ID {track_id}"
+            label = f"Face ID: {track_id} [STATIC]" if tf.is_static else f"Face ID: {track_id}"
             face_pos = (pos.x, pos.y, pos.z + 0.06)
             self._set_text_item(self.face_label_items, track_id, face_pos, label)
             if track_id in face_to_eyes:
