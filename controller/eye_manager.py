@@ -122,9 +122,16 @@ class EyeManager:
                 state.yaw, state.pitch = self._conversions.get_pitch_yaw(
                     eye_id, tracked_faces[state.face_id]
                 )
+                # Partial gimbal-induced roll compensation: yaw-then-pitch kinematics
+                # drag the eye's local "up" off world-vertical, making the blink appear rotated.                
+                # state.rotation = -0.4 * math.degrees(math.atan2(
+                #    math.sin(math.radians(state.yaw)) * math.sin(math.radians(state.pitch)),
+                #    math.cos(math.radians(state.pitch))
+                # ))
             else:
                 state.yaw = 0.0
                 state.pitch = 0.0
+                state.rotation = 0.0
 
     # ------------------------------------------------------------------
     # Public API

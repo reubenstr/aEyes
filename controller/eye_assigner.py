@@ -190,11 +190,8 @@ class EyeAssigner:
             self._available_pool.discard(best_eye_id)
             eye = self._eyes[best_eye_id]
             eye.assigned_face_id = target_face_id
-            eye.available_since = None
-
-            # Only advance the timer for rate-limited (non-urgent) assignments
-            if not face_is_uncovered:
-                self._last_assign_time = now
+            eye.available_since = None      
+            self._last_assign_time = now
 
             load[target_face_id] += 1
 
