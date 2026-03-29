@@ -16,6 +16,7 @@ from motors.motor_list import motor_list
 SOCKET_ADDRESS = "192.168.5.1"
 SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
+CONTROLLER_FPS = 15
 
 class Eye:
     def __init__(self):
@@ -24,6 +25,8 @@ class Eye:
         self.motors_zeroed = False
         self.socket = None
         self.thread_handle = None
+        self.commanded_yaw = 0.0
+        self.commanded_pitch = 0.0
 
     ###############################################################################
     # Initializers
@@ -53,7 +56,7 @@ class Eye:
             return        
        
         if self.motors_zeroed == True:
-            self.eye_renderer.set_text(TextType.INFO, 'Zeroing motors...')
+            self.eye_renderer.set_text(TextType.INFO, 'Homing motors...')
 
             self.motors = Motors(allow_enable=self.motors_zeroed)
             self.motors.enable_all_motors()
@@ -113,15 +116,16 @@ class Eye:
         except zmq.Again:
             pass
 
-    def adaptive_speed(self, motor_name, target):
-        CLOSE_DEG = 5.0   # below this → full fast speed
-        FAR_DEG   = 30.0  # above this → full slow speed
-        current = self.motors.get_motor_position(motor_name)
-        if current is None:
-            return MotorSpeeds.SLOW
-        delta = abs(target - current)
-        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))      
-        return int(MotorSpeeds.FAST + t * (MotorSpeeds.SLOW - MotorSpeeds.FAST))
+    def ramp_target(self, commanded: float, target: float) -> float:
+        CLOSE_DEG    = 5.0    # below this → pass-through (fast tracking)
+        FAR_DEG      = 30.0   # above this → max slowdown
+        FAST_DEG_S   = 900.0  # deg/sec when close (~pass-through)
+        SLOW_DEG_S   = 22.5   # deg/sec when far   (smooth slew)
+        delta = abs(target - commanded)
+        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))
+        t = 3*t**2 - 2*t**3  # smoothstep
+        max_step = (FAST_DEG_S + t * (SLOW_DEG_S - FAST_DEG_S)) / CONTROLLER_FPS
+        return commanded + max(-max_step, min(max_step, target - commanded))
 
 
     ###############################################################################
@@ -175,9 +179,11 @@ class Eye:
                             self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
                             self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
 
-                            if self.motors:                                
-                                self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=self.adaptive_speed(MotorName.BASE, msg.yaw), position=msg.yaw)
-                                self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=self.adaptive_speed(MotorName.EYE, msg.pitch), position=msg.pitch)
+                            if self.motors:
+                                self.commanded_yaw   = self.ramp_target(self.commanded_yaw,   msg.yaw)
+                                self.commanded_pitch = self.ramp_target(self.commanded_pitch, msg.pitch)
+                                self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.FAST, position=self.commanded_yaw)
+                                self.motors.set_motor_targets(motor_name=MotorName.EYE,  speed=MotorSpeeds.FAST, position=self.commanded_pitch)
 
                 except zmq.Again:
                     if connected and time() - last_msg_time > MESSAGE_TIMEOUT_SECONDS:
@@ -194,7 +200,7 @@ class Eye:
     ###############################################################################
 
     def _deferred_init(self):
-        sleep(0.3)  # Allow pyglet event loop to render first frame       
+        sleep(0.3)  # Allow pyglet event loop to render first frame
         self._init_local()
         self._init_motors()
         self._init_socket()

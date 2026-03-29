@@ -58,7 +58,8 @@ class EyeAssigner:
         self._available_pool: set[EyeId] = set()
 
         # Track when the last eye was pulled from the available pool.
-        self._last_assign_time: float = 0.0
+        # Initialized to now so the rate gate is active from the first frame.
+        self._last_assign_time: float = time.monotonic()
 
         # The face positions from the most recent tracker frame.
         self._current_faces: TrackedFaces = {}
