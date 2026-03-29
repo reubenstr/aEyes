@@ -111,7 +111,7 @@ The Pi receives a `ControlMessage` over ZMQ, ramps the motor targets smoothly, i
 
 Portions of this codebase were written with the assistance of **Claude Code** (Anthropic). AI assistance was used primarily for software development — including pipeline architecture, tracking algorithms, motor control logic, the OpenGL shader, and ZMQ communication.
 
-The physical hardware design, mechanical assembly, electronics wiring, and overall creative vision were entirely human work. The concept, aesthetic, and engineering decisions that define aEyes as a project were conceived and executed by the author.
+ Project concept, aesthetic, and engineering design were conceived and executed by the author.
 
 ---
 
