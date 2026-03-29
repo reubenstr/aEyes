@@ -92,7 +92,8 @@ The Pi receives a `ControlMessage` over ZMQ, ramps the motor targets smoothly, i
 - Waveshare 4" DSI LCD (1920×480)
 - Waveshare RS485/CAN Hat
 - DC-DC converter hat 24V → 5V
-- 2× MG4010E-i10v3 CAN servo motors (yaw + pitch, 1:10 gearbox)
+- 1× MG4010E-i10v3 CAN servo motor (yaw + pitch, 1:10 gearbox)
+- 1× MG4005-v2 CAN servo motor (yaw + pitch, 1:10 gearbox)
 
 ![Electronics bay](images/aEyes-electronics-bay-render.png)
 
