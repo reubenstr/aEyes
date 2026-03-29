@@ -37,6 +37,12 @@ tracker:
   embedding_ema_keep: 0.7    # Weight of existing embedding in running average.  range: 0–1
                              # New embedding weight = 1 - embedding_ema_keep.
 
+  # Static-face detection — faces whose rolling-max Kalman speed stays below
+  # static_speed_thresh_mps for static_window consecutive matched frames are
+  # classified as static and excluded from eye assignment.
+  static_window: 150             # Rolling velocity window length [frames].  range: 30–1000
+  static_speed_thresh_mps: 0.15  # Max speed to be considered static [m/s].  range: 0.01–1.0
+
 # ---------------------------------------------------------------------------
 # Kalman filter (3D constant-velocity)
 # ---------------------------------------------------------------------------

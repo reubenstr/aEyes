@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
-from data_types import Detection, FaceId, Position3D, TrackedFaces
+from data_types import Detection, FaceId, Position3D, TrackedFace, TrackedFaces
 from kalman_filter_3d import KalmanFilter3D
 from parameters import params as _params
 
@@ -45,6 +45,10 @@ class Track:
     # History of raw positions (for debugging / visualisation)
     position_history: deque = field(default_factory=lambda: deque(maxlen=300))
 
+    # Static-face detection
+    is_static: bool = False
+    speed_window: deque = field(default_factory=lambda: deque(maxlen=_params.tracker.static_window), repr=False)
+
     def __post_init__(self):
         pos = self.kalman.position
         self.smooth_x = pos.x
@@ -78,6 +82,15 @@ class Track:
         self.smooth_z = self.ema_alpha * kp.z + (1 - self.ema_alpha) * self.smooth_z
 
         self.position_history.append(position)
+
+        # Update static classification using rolling max velocity.
+        # Velocity is in m/frame; convert threshold to m/frame at runtime so
+        # the m/s constant remains valid across different publish frequencies.
+        speed = float(np.linalg.norm(self.kalman.velocity))
+        self.speed_window.append(speed)
+        if len(self.speed_window) == _params.tracker.static_window:
+            per_frame_thresh = _params.tracker.static_speed_thresh_mps / _params.system.refresh_rate_hz
+            self.is_static = max(self.speed_window) < per_frame_thresh
 
     def mark_missing(self):
         # Keep the Kalman filter predicting forward even when there is no
@@ -189,9 +202,9 @@ class FaceTracker:
             if age + 1 <= self.reid_window_frames
         ]
 
-        # 8. Return smoothed positions for confirmed tracks only
+        # 8. Return TrackedFace (position + is_static) for confirmed tracks only
         return {
-            tid: track.smoothed_position
+            tid: TrackedFace(position=track.smoothed_position, is_static=track.is_static)
             for tid, track in self.tracks.items()
             if track.status == TrackStatus.CONFIRMED
         }

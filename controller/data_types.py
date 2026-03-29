@@ -50,7 +50,12 @@ class EyeAssignmentState:
     # (None means it is currently assigned)
     available_since: float | None = None
 
-TrackedFaces = Dict[FaceId, Position3D]
+@dataclass(frozen=True)
+class TrackedFace:
+    position: Position3D
+    is_static: bool = False
+
+TrackedFaces = Dict[FaceId, TrackedFace]
 EyeAssignments = Dict[EyeId, Optional[FaceId]]
 
 @dataclass

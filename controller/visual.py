@@ -466,13 +466,15 @@ class PlotWindow(QtWidgets.QMainWindow):
             if face_id not in live_face_ids:
                 self.view.removeItem(self.eye_label_items.pop(face_id))
 
-        for track_id, pos in tracked_faces.items():
+        for track_id, tf in tracked_faces.items():
+            pos = tf.position
+            label = f"ID {track_id} [STATIC]" if tf.is_static else f"ID {track_id}"
             face_pos = (pos.x, pos.y, pos.z + 0.06)
-            self._set_text_item(self.face_label_items, track_id, face_pos, f"ID {track_id}")
+            self._set_text_item(self.face_label_items, track_id, face_pos, label)
             if track_id in face_to_eyes:
                 eye_pos = (pos.x, pos.y, pos.z - 0.10)
-                label = "Eyes: " + ",".join(map(str, face_to_eyes[track_id]))
-                self._set_text_item(self.eye_label_items, track_id, eye_pos, label)
+                eye_label = "Eyes: " + ",".join(map(str, face_to_eyes[track_id]))
+                self._set_text_item(self.eye_label_items, track_id, eye_pos, eye_label)
             elif track_id in self.eye_label_items:
                 self.view.removeItem(self.eye_label_items.pop(track_id))
 
@@ -482,7 +484,8 @@ class PlotWindow(QtWidgets.QMainWindow):
             if face_id not in live_face_ids:
                 self.view.removeItem(self.face_mesh_items.pop(face_id))
 
-        for face_id, pos in tracked_faces.items():
+        for face_id, tf in tracked_faces.items():
+            pos = tf.position
             mesh_item = self.face_mesh_items.get(face_id)
             if mesh_item is None:
                 meshdata = gl.MeshData.sphere(rows=12, cols=24, radius=0.06)
@@ -572,7 +575,7 @@ class PlotWindow(QtWidgets.QMainWindow):
             self.eye_ring_items[eye_id].setData(pos=ring_points, color=(0.9, 0.9, 0.92, 1.0))
 
             if state.face_id is not None and state.face_id in tracked_faces:
-                fp = tracked_faces[state.face_id]
+                fp = tracked_faces[state.face_id].position
                 ray_len = math.sqrt((fp.x - pp_x) ** 2 + (fp.y - pp_y) ** 2 + (fp.z - pp_z) ** 2)
                 look_x = cp * cy
                 look_y = cp * sy
@@ -590,7 +593,8 @@ class PlotWindow(QtWidgets.QMainWindow):
 
         trail_slot = 0
 
-        for track_id, pos in tracked_faces.items():
+        for track_id, tf in tracked_faces.items():
+            pos = tf.position
             hist = self.track_history[track_id]
             hist["x"].append(pos.x)
             hist["y"].append(pos.y)

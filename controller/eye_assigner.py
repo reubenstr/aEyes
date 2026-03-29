@@ -88,7 +88,8 @@ class EyeAssigner:
         now = time.monotonic()
 
         self._current_faces = tracked_faces
-        active_face_ids = list(tracked_faces.keys())
+        # Exclude static faces — eyes should not track paintings/non-moving subjects
+        active_face_ids = [fid for fid, tf in tracked_faces.items() if not tf.is_static]
 
         # 1. Handle disappearing faces – free their eyes into the available pool
         self._release_lost_faces(active_face_ids, now)
@@ -182,7 +183,7 @@ class EyeAssigner:
                 if now - self._last_assign_time < self.assign_interval_s:
                     break
 
-            pos = self._current_faces[target_face_id]
+            pos = self._current_faces[target_face_id].position
             face_x, face_y = pos.x, pos.y
             best_eye_id = self._closest_available_eye(face_x, face_y)
             if best_eye_id is None:
@@ -224,14 +225,14 @@ class EyeAssigner:
             if not donors:
                 break
 
-            ux, uy = self._current_faces[uncovered_fid].x, self._current_faces[uncovered_fid].y
+            ux, uy = self._current_faces[uncovered_fid].position.x, self._current_faces[uncovered_fid].position.y
 
             # Pick the donor face closest in X-Y to the uncovered face
             donor_fid = min(
                 donors,
                 key=lambda fid: math.sqrt(
-                    (self._current_faces[fid].x - ux) ** 2 +
-                    (self._current_faces[fid].y - uy) ** 2
+                    (self._current_faces[fid].position.x - ux) ** 2 +
+                    (self._current_faces[fid].position.y - uy) ** 2
                 ),
             )
 

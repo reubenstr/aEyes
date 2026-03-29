@@ -38,6 +38,8 @@ class TrackerParams:
     reid_max_distance: float
     ema_alpha: float
     embedding_ema_keep: float
+    static_window: int
+    static_speed_thresh_mps: float
 
 
 @dataclass
@@ -88,6 +90,10 @@ def _validate(p: Params) -> None:
           "tracker.ema_alpha must be in (0, 1]")
     check(0.0 < p.tracker.embedding_ema_keep < 1.0,
           "tracker.embedding_ema_keep must be in (0, 1)")
+    check(p.tracker.static_window >= 1,
+          "tracker.static_window must be a positive integer")
+    check(p.tracker.static_speed_thresh_mps > 0.0,
+          "tracker.static_speed_thresh_mps must be positive")
     check(p.tracker.min_hits_to_confirm >= 1,
           "tracker.min_hits_to_confirm must be a positive integer")
     check(p.tracker.max_missing_confirmed >= 1,

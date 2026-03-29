@@ -48,7 +48,8 @@ class Controller:
             eye_states = self.eye_mgr.update(tracked_faces)
 
             assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
-            print(f"[frame {frame_idx}] detected={len(dets)}  tracked={len(tracked_faces)}  assigned={assigned}")
+            static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
+            print(f"[frame {frame_idx}] detected={len(dets)}  tracked={len(tracked_faces)}  assigned={assigned}  static={static_count}")
             frame_idx += 1
 
             messages = {

@@ -295,7 +295,7 @@ def run(num_frames: int = 500, interval_ms: int = 50):
 
             # Assignment line — projects along the eye cylinder normal (always perpendicular to the ring).
             if state.face_id is not None and state.face_id in tracked_faces:
-                fp = tracked_faces[state.face_id]
+                fp = tracked_faces[state.face_id].position
                 ray_len = math.sqrt((fp.x - pp_x)**2 + (fp.y - pp_y)**2 + (fp.z - pp_z)**2)
                 look_x = cp * cy
                 look_y = cp * sy
@@ -311,7 +311,8 @@ def run(num_frames: int = 500, interval_ms: int = 50):
         TRAIL_LEN = 300
         TRAIL_SEGMENTS = 6  # number of fade segments
 
-        for track_id, pos in tracked_faces.items():
+        for track_id, tf in tracked_faces.items():
+            pos = tf.position
             if track_id not in track_history:
                 track_history[track_id] = {'x': [], 'y': [], 'z': []}
             track_history[track_id]['x'].append(pos.x)
@@ -332,11 +333,14 @@ def run(num_frames: int = 500, interval_ms: int = 50):
                 artists['lines'][(track_id, seg_i)] = ax.plot(
                     rx[seg_i:seg_end], ry[seg_i:seg_end], rz[seg_i:seg_end],
                     color='black', alpha=alpha, linewidth=1.0)[0]
+
+            label = f'ID {track_id} [STATIC]' if tf.is_static else f'ID {track_id}'
+            label_color = 'steelblue' if tf.is_static else 'black'
             artists['points'][track_id] = ax.scatter(
-                pos.x, pos.y, pos.z, color='black', s=100, marker='o')
+                pos.x, pos.y, pos.z, color=label_color, s=100, marker='o')
             artists['face_labels'][track_id] = ax.text(
-                pos.x, pos.y, pos.z + 0.06, f'ID {track_id}',
-                fontsize=8, color='black', ha='center', va='bottom')
+                pos.x, pos.y, pos.z + 0.06, label,
+                fontsize=8, color=label_color, ha='center', va='bottom')
 
             if track_id in face_to_eyes:
                 eye_label = 'Eyes: ' + ','.join(map(str, face_to_eyes[track_id]))

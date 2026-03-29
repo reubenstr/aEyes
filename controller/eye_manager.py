@@ -120,7 +120,7 @@ class EyeManager:
         for eye_id, state in self._states.items():
             if state.face_id is not None and state.face_id in tracked_faces:
                 state.yaw, state.pitch = self._conversions.get_pitch_yaw(
-                    eye_id, tracked_faces[state.face_id]
+                    eye_id, tracked_faces[state.face_id].position
                 )
                 # Partial gimbal-induced roll compensation: yaw-then-pitch kinematics
                 # drag the eye's local "up" off world-vertical, making the blink appear rotated.                
@@ -145,8 +145,8 @@ class EyeManager:
         # Assign eyes to faces
         assignments = self._eye_assigner.update(tracked_faces)
        
-        # Free colors for faces no longer tracked, so the pool doesn't exhaust
-        active_ids = set(tracked_faces.keys())
+        # Free colors for non-static faces no longer tracked, so the pool doesn't exhaust
+        active_ids = {fid for fid, tf in tracked_faces.items() if not tf.is_static}
         self._face_colors = {fid: c for fid, c in self._face_colors.items() if fid in active_ids}
 
         # Assign a color to any newly seen face_id
