@@ -1,6 +1,6 @@
 # aEyes
 
-A distributed robotic eye system. A central controller detects and tracks faces using a depth camera, then broadcasts motor and render commands to 6 Raspberry Pi eye units over a wired network. Each eye unit renders a procedurally animated OpenGL iris and drives two CAN-bus gimbal motors to follow tracked faces.
+aEyes is a robotic eye system tracking human faces as they traverse the scene. Each of the six eyes yaw and pitch to look directly at their respective tracked face.
 
 ![Front render](images/aEyes-front-render.png)
 
