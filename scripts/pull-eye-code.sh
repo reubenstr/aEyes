@@ -9,7 +9,12 @@ set -u
 
 SRC_HOST="eye1.local"
 SRC="/home/eye/aEyes/eye/"
-DST="/home/$USER/Desktop/projects/aEyes/eye/"
+
+# DEV PC
+SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+
+# RPI
+#SRC="/home/$USER/aEyes/eye/"
 
 echo "Pulling eye code from $SRC_HOST..."
 
