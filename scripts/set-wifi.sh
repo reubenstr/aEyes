@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+#
+# Disable or enable eye RPis WiFi.
+#
+
 set -u
 
 HOSTS=(

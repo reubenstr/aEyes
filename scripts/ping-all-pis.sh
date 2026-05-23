@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+#
+# Pings all eyes.
+#
+
 set -u
 
 HOSTNAMES=(

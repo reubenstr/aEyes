@@ -81,16 +81,6 @@ Network tag colors:
 
 EYE_ID: Y (left/right), Z (up/down)
 
-NEED TO +/- 5mm
-1: -400, 0
-2: -200, 346.41
-3: 200, 346.41
-4: 400, 0
-5: 200. -346.41
-6: -200, -346.41
-
-Note: these positions were placed prior increasing the main vertical frame member from 2020 to 4040. 
-
 
 ## Extrusions
 

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+#
+# Shutdown all eyes.
+#
+
 set -u
 
 HOSTS=(

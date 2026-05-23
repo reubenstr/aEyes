@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+
+#
+# Pulls eye code from the target eye and overwrites the local project's eye code.
+# Allows to develop code directly on a eye and pull changes for git commit.
+#
+
 set -u
 
 SRC_HOST="eye1.local"

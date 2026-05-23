@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
+
+#
+# Copies controller RPi eye code to all eyes (force overwrite).
+#
+
 set -u
 
 # DEV PC
 # SRC="/home/$USER/Desktop/projects/aEyes/eye/"
 
-# JETSON
+# RPI
 SRC="/home/$USER/aEyes/eye/"
 
 DST="/home/eye/aEyes/eye/"
