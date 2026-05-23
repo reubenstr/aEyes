@@ -9,10 +9,11 @@ Frame: 2020 V-Slot (Euro Standard will work as well)
 
 ## Bolts
 
-Base motor frame, rear side: M3x12mm 6x
-Base motor frame, drive side: M2.5x12mm 6x
-Base motor drive: M3x20mm 3x
-Base motor bearing: M3x8mm 3x
+Motor to motor extension plate, bearing side: M3x12mm 6x
+Motor to motor extension plate, drive side: M2.5x12mm 6x
+Motor extention plate to u-channel, drive and bearing side: M3x12mm
+2040 motor bracket to motor spacer, motor drive: M3x20mm 3x
+2040 motor bracket to motor spacer, M3x8mm 3x
 
 Center wire clip: 2x M3x6mm
 
@@ -31,13 +32,13 @@ Controller:
 
 
 Base bracket to 2040
-    Horiztonal - 8x M5x20mm
-
+    Horiztonal - 8x M5x25mm
+    Vertical - 
 
 ## Eye
     External
         Vertical: 8x M5x15mm
-        Horizontal: 4x 
+        Horizontal:  
 
 
     Eye Wires:        
@@ -55,6 +56,16 @@ Base bracket to 2040
 
     Eye 2 starting 540mm wires
 
+## Sheath
+
+Braided sleeve 5mm inner diameter
+
+1: 
+2: 
+3: 280mm
+4: 
+5: 
+6: 
 
 ## Eye Positions
 
@@ -107,3 +118,22 @@ Motor for vertical orientation:
 
 current motor wire length: 170mm 
 
+
+
+---------------------------------------------------------------
+
+NEW NEW NEW
+
+U-Channel to extension brackets:
+    M3x12mm
+
+
+
+
+2040:
+    1x 1100.00mm
+    2x 440.00mm
+    2x 244.62mm
+    2x 191.50mm   
+    2x 137.81mm
+    Note: tolerance -+1mm is OK
