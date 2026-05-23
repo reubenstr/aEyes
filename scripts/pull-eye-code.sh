@@ -22,7 +22,6 @@ EXCLUDES=(
 	--exclude='.git/'
 	--exclude='.venv/'
 	--exclude='.env'
-	--exclude='.motors-zeroed'
 	--exclude='__pycache__/'
 	--exclude='*.pyc'
 )
