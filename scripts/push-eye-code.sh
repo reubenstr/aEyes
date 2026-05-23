@@ -7,10 +7,10 @@
 set -u
 
 # DEV PC
-# SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+SRC="/home/$USER/Desktop/projects/aEyes/eye/"
 
 # RPI
-SRC="/home/$USER/aEyes/eye/"
+#SRC="/home/$USER/aEyes/eye/"
 
 DST="/home/eye/aEyes/eye/"
 
@@ -24,10 +24,16 @@ HOSTS=(
 )
 
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-	DRY_RUN=true
-	echo "Dry run mode — no changes will be made"
+NO_RESET=false
+
+if [[ "$1" == "--dry-run" ]]; then
+    DRY_RUN=true
+    echo "Dry run mode — no changes will be made"
+elif [[ "$1" == "--no-reset" ]]; then
+    NO_RESET=true
+    echo "No-reset mode enabled"
 fi
+
 
 for h in "${HOSTS[@]}"; do
 
@@ -57,7 +63,7 @@ for h in "${HOSTS[@]}"; do
 	fi
 	echo "OK"
 
-	if ! $DRY_RUN; then
+	if ! $DRY_RUN && ! $NO_RESET; then
 		echo -n "Restarting main.service on $h... "
 		if ssh "eye@$h" "sudo systemctl restart main.service" 2>/dev/null; then
 			echo "OK"

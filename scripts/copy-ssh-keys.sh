@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # 
-# Copies ssh key from the controller RPi (or dev machine) to the eyes. 
+# Copies ssh key to the eyes. 
 # 
 
 set -u
