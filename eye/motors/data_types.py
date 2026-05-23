@@ -33,7 +33,7 @@ class MotorInfo:
     inverse_rotation: bool
     allow_motion: bool
     allow_comms: bool
-    home_position: float | None
+    home_position: float
 
 
 @dataclass

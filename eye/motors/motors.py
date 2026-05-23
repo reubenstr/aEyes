@@ -10,7 +10,7 @@ from threading import Thread, Event, Lock
 from typing import Dict, List
 
 from motors.motor import Motor
-from motors.motor_list import motor_list
+from motors.motor_list import motor_info_list
 from motors.data_types import CanInfo, MotorZeroInfo, Status, MotorName
 
 
@@ -33,7 +33,7 @@ class Motors:
 
         self.min_loop_rate_seconds: float = 0.010
 
-        can_channels = list({motor.can_channel for motor in motor_list() if motor.allow_motion or motor.allow_comms})
+        can_channels = list({motor.can_channel for motor in motor_info_list() if motor.allow_motion or motor.allow_comms})
         self.can_infos: Dict[str, CanInfo] = {}
         for can_channel in can_channels:
             self.can_infos[can_channel] = CanInfo(
@@ -52,7 +52,7 @@ class Motors:
 
         default_speed: int = 250
 
-        for motor in motor_list():
+        for motor in motor_info_list():
             if motor.can_channel in can_channels:
                 self.motors[motor.name] = Motor(
                     name=motor.name,
@@ -209,7 +209,7 @@ class Motors:
 
         print(f"[{self.tag}][ALL] set all motor PIDs completed, time: {time() - start:0.3f}")      
         return True
-
+        
     """def is_all_motor_angles_within_range(self, tolerance: float):
         with self.lock:
             for motor_name, motor in self.motors.items():
@@ -242,6 +242,10 @@ class Motors:
                 return self.motors[motor_name].position_degrees
             return None
 
+    def enforce_position_limits(self, motor_name: str, value: bool):
+        if motor_name in self.motors:
+            self.motors[motor_name].enforce_position_limits = value
+      
     def is_can_error(self) -> bool:
         for can_info in self.can_infos.values():
             if can_info.status == Status.ERROR:

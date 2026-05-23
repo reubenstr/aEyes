@@ -103,6 +103,7 @@ class Motor:
         self.position_offset: float = 0.0
         self.apply_180_offset: bool = False
         self.max_reply_timeouts_allow: int = 3
+        self.enforce_position_limits: bool = True
 
         self.ARBRITATION_BASE_OFFSET: int = 0x140
 
@@ -192,7 +193,9 @@ class Motor:
 
         position = position * -1.0 if self.inverse_rotation else position
         position += self.position_offset
-        position = max(self.min_position + self.position_offset, min(self.max_position + self.position_offset, position))
+
+        if self.enforce_position_limits:
+            position = max(self.min_position + self.position_offset, min(self.max_position + self.position_offset, position))
 
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF

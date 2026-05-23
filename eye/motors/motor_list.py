@@ -1,7 +1,6 @@
 from typing import List
 from motors.data_types import MotorInfo, MotorName
 
-
 """
     Motor configurations.
 
@@ -12,8 +11,7 @@ from motors.data_types import MotorInfo, MotorName
     home_position used to home motor, for example the EYE motor does not have dual encoders so it must be homed upon startup.
 """
 
-
-def motor_list() -> List[MotorInfo]:
+def motor_info_list() -> List[MotorInfo]:
     return [
         MotorInfo(
             name=MotorName.BASE,
@@ -24,7 +22,7 @@ def motor_list() -> List[MotorInfo]:
             inverse_rotation=False,
             allow_motion=True,
             allow_comms=True,
-            home_position=None,
+            home_position=45, # Physical endstop position.
         ),
         MotorInfo(
             name=MotorName.EYE,
@@ -35,6 +33,13 @@ def motor_list() -> List[MotorInfo]:
             inverse_rotation=True,
             allow_motion=True,
             allow_comms=True,
-            home_position=52.0 # Physical endstop position.
+            home_position=45, # Physical endstop position.
         ),
     ]
+
+def get_motor_info(name: MotorName) -> MotorInfo:
+    for motor in motor_info_list():
+        if motor.name == name:
+            return motor
+
+    raise ValueError(f"Motor not found: {name}")
