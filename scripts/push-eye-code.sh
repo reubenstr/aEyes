@@ -38,7 +38,7 @@ fi
 
 for h in "${HOSTS[@]}"; do
 
-	echo -n "Syncing to $h... "
+	echo -n "Pushing eye code to $h... "
 
 	EXCLUDES=(
 		--exclude='.git/'
