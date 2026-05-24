@@ -13,9 +13,9 @@ HOSTS=(
 
 REBOOT=false
 
-if [[ "$1" == "--reboot" ]]; then
+if [[ "${1:-}" == "--reboot" ]]; then
     REBOOT=true
-    echo "Reboot mode — issuing reboot instead of shutdown"
+    echo "Issuing reboot instead of shutdown"
 fi
 
 LOCAL_HOST="$(hostname -s)"
