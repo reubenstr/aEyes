@@ -22,7 +22,7 @@ def motor_info_list() -> List[MotorInfo]:
             inverse_rotation=False,
             allow_motion=True,
             allow_comms=True,
-            home_position=45, # Physical endstop position.
+            home_position=67.5, # Physical endstop position.
         ),
         MotorInfo(
             name=MotorName.EYE,

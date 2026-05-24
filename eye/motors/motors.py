@@ -227,7 +227,7 @@ class Motors:
         with self.data_lock:
             self.target_speeds[motor_name] = speed
             self.target_positions[motor_name] = position
-
+ 
     def get_motor(self, motor_name: str) -> Motor:
         with self.data_lock:
             return self.motors[motor_name]
@@ -241,11 +241,21 @@ class Motors:
             if motor_name in self.motors:
                 return self.motors[motor_name].position_degrees
             return None
+        
+    def get_motor_raw_position(self, motor_name: str) -> float:
+        with self.data_lock:
+            if motor_name in self.motors:
+                return self.motors[motor_name].raw_position_degrees
+            return None
 
     def enforce_position_limits(self, motor_name: str, value: bool):
         if motor_name in self.motors:
             self.motors[motor_name].enforce_position_limits = value
-      
+
+    def set_inversion_rotation(self, motor_name: str, inverted: bool):
+        if motor_name in self.motors:
+            self.motors[motor_name].inverse_rotation = inverted
+                
     def is_can_error(self) -> bool:
         for can_info in self.can_infos.values():
             if can_info.status == Status.ERROR:
@@ -277,9 +287,10 @@ class Motors:
         for key, motor in self.motors.items():
             if motor.allow_comms:
                 motor.req_position()
-                if motor.position_degrees > 180.0:
-                    motor.set_apply_180_offset(True)
-                self.target_positions[key] = motor.position_degrees
+                # if motor.position_degrees > 180.0:
+                #    motor.set_apply_180_offset(True)
+                # motor.set_apply_180_offset(True)
+                self.target_positions[key] = motor.raw_position_degrees
 
         print(f"[{self.tag}] starting motor worker threads")
         if not all(can_info.status == Status.ACTIVE for can_info in self.can_infos.values()):

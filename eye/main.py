@@ -23,8 +23,7 @@ CONTROLLER_FPS = 15
 class Eye:
     def __init__(self):
         self.eye_id = None
-        self.motors = None
-        self.motors_zeroed = False
+        self.motors = None   
         self.socket = None
         self.thread_handle = None
         self.commanded_yaw = 0.0
@@ -52,8 +51,32 @@ class Eye:
         print("[Main] initialize motors")
 
         self.motors = Motors(allow_enable=True)
+
+        # Compensate for Eyes 4 and 6 being mounted upside down.
+        if self.eye_id in [4, 6]:
+            self.motors.set_inversion_rotation(MotorName.BASE, True)
+            self.motors.set_inversion_rotation(MotorName.EYE, True)
+
         self.motors.enable_all_motors()
         self.home_motors(self.motors)
+        self.motors.disable_all_motors()
+
+        print("LOOP")
+        while(True):
+            sleep(0.05)
+          
+            raw = self.motors.motors[MotorName.BASE].raw_position_degrees
+            pos = self.motors.motors[MotorName.BASE].position_degrees
+            offset = self.motors.motors[MotorName.BASE].position_offset
+            print(
+                f"{float(raw):.2f}",
+                f"{float(pos):.2f}",
+                f"{float(offset):.2f}",
+                flush=True
+)
+
+
+       
 
     def _init_socket(self):
         print("[Main] init zmq")
@@ -108,26 +131,28 @@ class Eye:
         motors.enforce_position_limits(MotorName.BASE, False)
         motors.enforce_position_limits(MotorName.EYE, False)
 
-        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=-180.0)
+        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=90.0)
         motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=-180.0)
 
         sleep(1.0)  # Allow motors to begin moving before polling.
 
         start = time()
         while time() - start < operation_timeout_seconds:
-            for motor in (m for m in motors_to_home if not homed[m]):
-                pos = motors.get_motor_position(motor)
-                delta = abs(pos - prev_positions[motor])
-                prev_positions[motor] = pos
-                print(f"{motor}: {pos}")
+            for motor_name in (m for m in motors_to_home if not homed[m]):
+                pos = motors.get_motor_position(motor_name)
+                delta = abs(pos - prev_positions[motor_name])
+                prev_positions[motor_name] = pos
+                
+                if motor_name is MotorName.BASE:
+                    print(f"{motor_name}: {pos}")
 
                 if delta < home_threshold_deg:
-                    if home_started[motor] is None:
-                        home_started[motor] = time()
-                    elif time() - home_started[motor] >= home_duration:
-                        homed[motor] = True
+                    if home_started[motor_name] is None:
+                        home_started[motor_name] = time()
+                    elif time() - home_started[motor_name] >= home_duration:
+                        homed[motor_name] = True
                 else:
-                    home_started[motor] = None
+                    home_started[motor_name] = None
 
             if all(homed.values()):
                 break
@@ -135,15 +160,17 @@ class Eye:
             sleep(0.050)
 
         home_position = get_motor_info(MotorName.BASE).home_position
-        base_current_pos = motors.motors[MotorName.BASE].position_degrees
+        raw_pos = motors.get_motor_raw_position(MotorName.BASE)
+        offset = -raw_pos - home_position
+        print(home_position, raw_pos, offset)
         motors.enforce_position_limits(MotorName.BASE, True)
-        motors.motors[MotorName.BASE].set_position_offset(-base_current_pos - home_position)
+        motors.motors[MotorName.BASE].set_position_offset(offset)
         motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
 
         home_position = get_motor_info(MotorName.EYE).home_position
-        eye_current_pos = motors.motors[MotorName.EYE].position_degrees
+        raw_pos = motors.get_motor_position(MotorName.EYE)
         motors.enforce_position_limits(MotorName.EYE, True)
-        motors.motors[MotorName.EYE].set_position_offset(-eye_current_pos - home_position)
+        motors.motors[MotorName.EYE].set_position_offset(-raw_pos - home_position)
         motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
 
         sleep(3)
@@ -171,10 +198,8 @@ class Eye:
         self.eye_renderer.set_text(TextType.INFO, "Waiting for data")
         self._flush_socket()
 
-        while not self.exit_event.is_set():
-            if not self.motors_zeroed:
-                self.eye_renderer.set_text(TextType.ERROR, "Motors not zeroed!")
-            elif self.socket:
+        while not self.exit_event.is_set():           
+            if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
                     msg_json = json.loads(msg_raw)
@@ -235,7 +260,7 @@ class Eye:
 
     def shutdown(self):
         self.stop()
-        if self.motors_zeroed and self.motors:
+        if self.motors:
             try:
                 self.motors.shutdown()
             except Exception as e:

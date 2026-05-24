@@ -74,6 +74,7 @@ class Motor:
         self.current: float = 0
         self.motor_speed: int = 0
         self.encoder_position: int = 0
+        self.raw_position_degrees: float = 0
         self.position_degrees: float = 0
 
         # Motor fault states (from motor driver):
@@ -277,7 +278,7 @@ class Motor:
                 reply_data = reply.data
 
                 # The data appears to be shifted right by 8 bits which breaks int64 twos compliment convention.
-                raw_position: int = (
+                raw_data: int = (
                     (reply_data[1] << 8)  # Low byte
                     | (reply_data[2] << 16)  # Byte 2
                     | (reply_data[3] << 24)  # Byte 3
@@ -287,10 +288,17 @@ class Motor:
                     | (reply_data[7] << 56)  # Byte 7
                 ) 
 
-                converted_position_degrees = (self.convert_twos_compliment_64(raw_position) >> 8) / 1000.0
-                converted_position_degrees = converted_position_degrees - 360.0 if self.apply_180_offset else converted_position_degrees
-                converted_position_degrees -= self.position_offset
-                self.position_degrees = converted_position_degrees * -1.0 if self.inverse_rotation else converted_position_degrees
+                
+                self.raw_position_degrees = (self.convert_twos_compliment_64(raw_data) >> 8) / 1000.0
+                
+                inverted_position = self.raw_position_degrees * -1.0 if self.inverse_rotation else self.raw_position_degrees
+            
+                self.position_degrees =  inverted_position - self.position_offset 
+
+
+                # converted_position_degrees = converted_position_degrees - 180.0 if self.apply_180_offset else converted_position_degrees                
+                # converted_position_degrees -= self.position_offset                
+                # self.position_degrees = converted_position_degrees * -1.0 if self.inverse_rotation else converted_position_degrees
 
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")
