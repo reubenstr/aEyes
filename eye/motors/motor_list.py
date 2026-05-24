@@ -19,7 +19,7 @@ def motor_info_list() -> List[MotorInfo]:
             id=1,
             min_position=-45.0,
             max_position=45.0,
-            inverse_rotation=False,
+            inverse_rotation=True, # CW is negative, CCW is positive
             allow_motion=True,
             allow_comms=True,
             home_position=67.5, # Physical endstop position.

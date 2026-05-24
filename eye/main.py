@@ -19,11 +19,17 @@ SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
 CONTROLLER_FPS = 15
 
+# Eyes 4 and 6 are mounted upside down.
+EYE_INVERSIONS = [None, False, False, False, True, False, True]
+
+# Eyes 2 switch homing side for Eyes with U-Brackets that will collide with the frame during homing.
+BASE_HOME_INVERSION = [None, False, True, False, False, False, False]
+
 
 class Eye:
     def __init__(self):
         self.eye_id = None
-        self.motors = None   
+        self.motors = None
         self.socket = None
         self.thread_handle = None
         self.commanded_yaw = 0.0
@@ -52,31 +58,13 @@ class Eye:
 
         self.motors = Motors(allow_enable=True)
 
-        # Compensate for Eyes 4 and 6 being mounted upside down.
-        if self.eye_id in [4, 6]:
+        if self.eye_id and EYE_INVERSIONS[self.eye_id]:
             self.motors.set_inversion_rotation(MotorName.BASE, True)
             self.motors.set_inversion_rotation(MotorName.EYE, True)
 
         self.motors.enable_all_motors()
         self.home_motors(self.motors)
-        self.motors.disable_all_motors()
-
-        print("LOOP")
-        while(True):
-            sleep(0.05)
-          
-            raw = self.motors.motors[MotorName.BASE].raw_position_degrees
-            pos = self.motors.motors[MotorName.BASE].position_degrees
-            offset = self.motors.motors[MotorName.BASE].position_offset
-            print(
-                f"{float(raw):.2f}",
-                f"{float(pos):.2f}",
-                f"{float(offset):.2f}",
-                flush=True
-)
-
-
-       
+        self.motors.disable_all_motors()  # TEMP
 
     def _init_socket(self):
         print("[Main] init zmq")
@@ -120,10 +108,10 @@ class Eye:
 
         motors_to_home = [MotorName.BASE, MotorName.EYE]
         operation_timeout_seconds = 5.0
-        home_duration = 0.5  # Time motor is required to be stopped before considing the motor homed.
+        home_duration = 0.5  # Time motor is required to be stopped before considered home.
         home_threshold_deg = 0.25
         prev_positions = {motor: motors.get_motor_position(motor) for motor in motors_to_home}
-        home_started = {motor: None for motor in motors_to_home}
+        home_started: dict[MotorName, float | None] = {motor: None for motor in motors_to_home}
         homed = {motor: False for motor in motors_to_home}
 
         self.eye_renderer.set_text(TextType.INFO, "Homing motors...")
@@ -131,8 +119,9 @@ class Eye:
         motors.enforce_position_limits(MotorName.BASE, False)
         motors.enforce_position_limits(MotorName.EYE, False)
 
-        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=90.0)
-        motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=-180.0)
+        base_home_target_position = -180 if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True else 180
+        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=base_home_target_position)
+        motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=180.0)
 
         sleep(1.0)  # Allow motors to begin moving before polling.
 
@@ -142,14 +131,15 @@ class Eye:
                 pos = motors.get_motor_position(motor_name)
                 delta = abs(pos - prev_positions[motor_name])
                 prev_positions[motor_name] = pos
-                
+
                 if motor_name is MotorName.BASE:
                     print(f"{motor_name}: {pos}")
 
+                started = home_started[motor_name]
                 if delta < home_threshold_deg:
-                    if home_started[motor_name] is None:
+                    if started is None:
                         home_started[motor_name] = time()
-                    elif time() - home_started[motor_name] >= home_duration:
+                    elif time() - started >= home_duration:
                         homed[motor_name] = True
                 else:
                     home_started[motor_name] = None
@@ -198,7 +188,7 @@ class Eye:
         self.eye_renderer.set_text(TextType.INFO, "Waiting for data")
         self._flush_socket()
 
-        while not self.exit_event.is_set():           
+        while not self.exit_event.is_set():
             if self.socket:
                 try:
                     msg_raw = self.socket.recv_string(flags=zmq.NOBLOCK)
@@ -247,9 +237,10 @@ class Eye:
     def _deferred_init(self):
         sleep(0.3)  # Allow pyglet event loop to render first frame
         self._init_local()
-        self._init_motors()
-        self._init_socket()
-        self._start()
+        if self.eye_id:
+            self._init_motors()
+            self._init_socket()
+            self._start()
 
     def run(self):
         self.init_eye_renderer()
