@@ -112,9 +112,3 @@ The Pi receives a `ControlMessage` over ZMQ, ramps the motor targets smoothly, i
 Portions of this codebase were written with the assistance of **Claude Code** (Anthropic). AI assistance was used primarily for software development — including pipeline architecture, tracking algorithms, motor control logic, the OpenGL shader, and ZMQ communication.
 
  Project concept, aesthetic, and engineering design were conceived and executed by the author.
-
----
-
-## After Thoughts
-
-Use physical endstops for both motors which removes the need for zeroing.

@@ -24,7 +24,7 @@ class MotorName(StrEnum):
 
 
 @dataclass
-class MotorInfo:
+class MotorConfig:
     name: MotorName
     can_channel: str
     id: int

@@ -6,25 +6,16 @@ import json
 from eye_renderer import EyeRenderer, TextType
 from threading import Thread, Event
 from time import sleep, time
-from typing import List
 
 from data_types import ControlMessage
 from motors.data_types import MotorName, MotorSpeeds
 from motors.motors import Motors
-from motors.motor import Motor
-from motors.motor_list import motor_info_list, get_motor_info
+from motors.motor_config import get_motor_info, BASE_HOME_INVERSION, EYE_INVERSIONS
 
 SOCKET_ADDRESS = "192.168.5.100"
 SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
 CONTROLLER_FPS = 15
-
-# Eye 2: switch zeroing side to avoid the U-Bracket from colliding with the frame.
-BASE_HOME_INVERSION = [None, False, True, False, False, False, False]
-
-# Eyes 4 and 6: invert rotation due to being mounted upside down.
-EYE_INVERSIONS = [None, False, False, False, True, False, True]
-
 
 class Eye:
     def __init__(self):
@@ -58,9 +49,12 @@ class Eye:
 
         self.motors = Motors(allow_enable=True)
 
-        if self.eye_id and EYE_INVERSIONS[self.eye_id]:
+        if self.eye_id and EYE_INVERSIONS[self.eye_id] is True:
             self.motors.set_inversion_rotation(MotorName.BASE, not self.motors.get_inverse_rotation(MotorName.BASE))
             self.motors.set_inversion_rotation(MotorName.EYE, not self.motors.get_inverse_rotation(MotorName.EYE))
+
+        # Allow repolling (recalcuation) of positions that may of been inversed.
+        sleep(0.5)
 
         self.motors.enable_all_motors()
         self.home_motors(self.motors)
@@ -117,7 +111,7 @@ class Eye:
 
         self.eye_renderer.set_text(TextType.INFO, "Homing motors...")
 
-        base_position = motors.get_motor_position(MotorName.BASE)                
+        base_position = motors.get_motor_position(MotorName.BASE)    
         base_home_target_position = (
             -motor_home_target_pos_offset if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True else motor_home_target_pos_offset
         )    
@@ -129,7 +123,7 @@ class Eye:
         motors.set_enforce_position_limits(MotorName.EYE, False)
         motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=eye_position + eye_home_target_position)
 
-        sleep(1.0)  # Allow motors to begin moving before polling.
+        sleep(0.5)  # Allow motors to begin moving before polling.
 
         start = time()
         while time() - start < operation_timeout_seconds:
@@ -158,17 +152,12 @@ class Eye:
         home_position = get_motor_info(MotorName.BASE).home_position
         raw_pos = motors.get_motor_raw_position(MotorName.BASE)
         pos = motors.get_motor_position(MotorName.BASE)
-
-        #if self.eye_id is not None and EYE_INVERSIONS[self.eye_id] is True:
-        #    raw_pos = -raw_pos
-
+    
         if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True:
             offset = -raw_pos - home_position
         else:
             offset = -raw_pos + home_position          
 
-
-        print("END:", home_position, raw_pos, pos, offset)
         motors.set_enforce_position_limits(MotorName.BASE, True)
         motors.set_position_offset(MotorName.BASE, offset)
         motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
@@ -179,19 +168,9 @@ class Eye:
         motors.set_enforce_position_limits(MotorName.EYE, True)
         motors.set_position_offset(MotorName.EYE, offset)
         motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
-
-        sleep(5)
-
-        self.motors.disable_all_motors()  # TEMP
-        while True:
-            raw_pos = motors.get_motor_raw_position(MotorName.BASE)
-            pos = motors.get_motor_position(MotorName.BASE)
-            offset = motors.motors[MotorName.BASE].position_offset
-            t = motors.target_positions[MotorName.BASE]
-            print(raw_pos, pos, offset, t)
-            sleep(0.250)
-
-        sleep(5)
+       
+        sleep(3)  # Allow motors to reach the home position before exiting. 
+    
 
     ###############################################################################
     # Thread

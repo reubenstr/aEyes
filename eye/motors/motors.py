@@ -10,7 +10,7 @@ from threading import Thread, Event, Lock
 from typing import Dict, List
 
 from motors.motor import Motor
-from motors.motor_list import motor_info_list
+from motors.motor_config import motor_config
 from motors.data_types import CanInfo, MotorZeroInfo, Status, MotorName
 
 
@@ -33,7 +33,7 @@ class Motors:
 
         self.min_loop_rate_seconds: float = 0.010
 
-        can_channels = list({motor.can_channel for motor in motor_info_list() if motor.allow_motion or motor.allow_comms})
+        can_channels = list({motor.can_channel for motor in motor_config() if motor.allow_motion or motor.allow_comms})
         self.can_infos: Dict[str, CanInfo] = {}
         for can_channel in can_channels:
             self.can_infos[can_channel] = CanInfo(
@@ -52,7 +52,7 @@ class Motors:
 
         default_speed: int = 250
 
-        for motor in motor_info_list():
+        for motor in motor_config():
             if motor.can_channel in can_channels:
                 self.motors[motor.name] = Motor(
                     name=motor.name,
@@ -262,6 +262,7 @@ class Motors:
         return None
 
     def set_inversion_rotation(self, motor_name: str, inverted: bool):
+        # TODO: setting the inverse needs to immediately recalculate current position
         if motor_name in self.motors:
             self.motors[motor_name].inverse_rotation = inverted
                 
