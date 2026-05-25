@@ -256,7 +256,7 @@ class Motors:
         if motor_name in self.motors:
             self.motors[motor_name].enforce_position_limits = value
 
-    def get_inversion_rotation(self, motor_name: str) -> bool:
+    def get_inverse_rotation(self, motor_name: str) -> bool:
         if motor_name in self.motors:
             return self.motors[motor_name].inverse_rotation
         return None
