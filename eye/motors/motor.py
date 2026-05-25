@@ -197,7 +197,7 @@ class Motor:
       
         position -= self.position_offset
 
-        position = position * -1.0 if self.inverse_rotation else position  
+        position = -position if self.inverse_rotation else position  
        
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF
@@ -278,13 +278,31 @@ class Motor:
         reply = self.op_wait_for_reply()
         if reply:
             reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
-            if self.motor_id == reply_motor_id:          
-                raw_data = int.from_bytes(reply.data[1:8] + b'\x00', byteorder='little', signed=True)
-                raw_pos = raw_data / 1000.0
+            if self.motor_id == reply_motor_id:  
 
-                inverse_pos = raw_pos * -1.0 if self.inverse_rotation else raw_pos    
 
-                self.raw_position_degrees = inverse_pos
+                #raw_data = int.from_bytes(reply.data[1:8] + b'\x00', byteorder='little', signed=True)
+                #raw_pos = raw_data / 1000.0
+
+                reply_data = reply.data
+
+                # The data appears to be shifted right by 8 bits which breaks int64 twos compliment convention.
+                raw_data: int = (
+                    (reply_data[1] << 8)  # Low byte
+                    | (reply_data[2] << 16)  # Byte 2
+                    | (reply_data[3] << 24)  # Byte 3
+                    | (reply_data[4] << 32)  # Byte 4
+                    | (reply_data[5] << 40)  # Byte 5
+                    | (reply_data[6] << 48)  # Byte 6
+                    | (reply_data[7] << 56)  # Byte 7
+                )
+
+                raw_pos = (self.convert_twos_compliment_64(raw_data) >> 8) / 1000.0
+                inverse_pos = raw_pos * -1.0 if self.inverse_rotation else raw_pos
+                      
+
+                inverse_pos = -raw_pos if self.inverse_rotation else raw_pos    
+                self.raw_position_degrees = inverse_pos                
                 self.position_degrees = inverse_pos + self.position_offset           
               
                 if self.prints_enabled:
@@ -324,13 +342,27 @@ class Motor:
         if value >= 0x8000:  # 0x8000 is 32768 in decimal, the value of the MSB for 16-bit
             return value - 0x10000  # 0x10000 is 65536, the range of 16-bit unsigned integer
         return value
-
+    
     @staticmethod
     def convert_twos_compliment_64(value):
         max_int64 = 2**63 - 1
         if value > max_int64:
             value -= 2**64
         return value
+    
+    @staticmethod
+    def twos_complement_to_float_64(value):
+        # Define the max value for signed 64-bit integer
+        max_int64 = 2**63 - 1
+        min_int64 = -(2**63)
+
+        # Check if the value is negative in two's complement representation
+        if value > max_int64:
+            # Convert to negative equivalent
+            value -= 2**64
+
+        # Now value is a signed integer
+        return float(value)
   
     @staticmethod
     def map_range(x, in_min, in_max, out_min, out_max):

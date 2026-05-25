@@ -117,10 +117,10 @@ class Eye:
 
         self.eye_renderer.set_text(TextType.INFO, "Homing motors...")
 
-        base_position = motors.get_motor_position(MotorName.BASE)
+        base_position = motors.get_motor_position(MotorName.BASE)                
         base_home_target_position = (
             -motor_home_target_pos_offset if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True else motor_home_target_pos_offset
-        )
+        )    
         eye_home_target_position = motor_home_target_pos_offset
         motors.set_enforce_position_limits(MotorName.BASE, False)
         motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=base_position + base_home_target_position)
@@ -159,10 +159,14 @@ class Eye:
         raw_pos = motors.get_motor_raw_position(MotorName.BASE)
         pos = motors.get_motor_position(MotorName.BASE)
 
+        #if self.eye_id is not None and EYE_INVERSIONS[self.eye_id] is True:
+        #    raw_pos = -raw_pos
+
         if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True:
             offset = -raw_pos - home_position
         else:
-            offset = -raw_pos + home_position
+            offset = -raw_pos + home_position          
+
 
         print("END:", home_position, raw_pos, pos, offset)
         motors.set_enforce_position_limits(MotorName.BASE, True)
