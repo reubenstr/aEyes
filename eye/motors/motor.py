@@ -63,7 +63,7 @@ class Motor:
         self.allow_comms: bool = allow_comms
         self.allow_motion: bool = allow_motion
         self.can_channel: str = can_channel
-        self.bus: Bus = bus     
+        self.bus: Bus = bus
 
         self.tag = f"[Motor][{name}]"
         self.prints_enabled: bool = False
@@ -102,7 +102,6 @@ class Motor:
 
         # Other config:
         self.position_offset: float = 0.0
-        self.apply_180_offset: bool = False
         self.max_reply_timeouts_allow: int = 3
         self.enforce_position_limits: bool = True
 
@@ -159,7 +158,7 @@ class Motor:
         if not self.op_can_send_message(self.motor_id, [0x81, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET  
+        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
 
     def cmd_clear_motor_errors(self):
         if not self.op_can_send_message(self.motor_id, [0x9B, 0, 0, 0, 0, 0, 0, 0]):
@@ -178,8 +177,8 @@ class Motor:
         Sets PID parameters to RAM; invalid upon power cycle.
         """
         if not self.op_can_send_message(self.motor_id, [0x34, 0, angle_kp, angle_ki, speed_kp, speed_ki, iq_kp, iq_ki]):
-            print("[Motor] failed to send pid to motor!")   
-        reply = self.op_wait_for_reply()        
+            print("[Motor] failed to send pid to motor!")
+        reply = self.op_wait_for_reply()
         return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
 
     def cmd_set_angle_and_speed(
@@ -192,12 +191,13 @@ class Motor:
         Datasheet named as: cmd_motor_multi_angle_2
         """
 
-        position = position * -1.0 if self.inverse_rotation else position
-        position += self.position_offset
-
         if self.enforce_position_limits:
-            position = max(self.min_position + self.position_offset, min(self.max_position + self.position_offset, position))
+            position = max(self.min_position, min(self.max_position, position))
+      
+        position -= self.position_offset
 
+        position = position * -1.0 if self.inverse_rotation else position  
+       
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF
         angle_byte_0 = int(position * 1000.0) >> 0 & 0x000000FF
@@ -286,20 +286,14 @@ class Motor:
                     | (reply_data[5] << 40)  # Byte 5
                     | (reply_data[6] << 48)  # Byte 6
                     | (reply_data[7] << 56)  # Byte 7
-                ) 
+                )
 
-                
-                self.raw_position_degrees = (self.convert_twos_compliment_64(raw_data) >> 8) / 1000.0
-                
-                inverted_position = self.raw_position_degrees * -1.0 if self.inverse_rotation else self.raw_position_degrees
-            
-                self.position_degrees =  inverted_position - self.position_offset 
+                raw_pos = (self.convert_twos_compliment_64(raw_data) >> 8) / 1000.0  
+                inverse_pos = raw_pos * -1.0 if self.inverse_rotation else raw_pos    
 
-
-                # converted_position_degrees = converted_position_degrees - 180.0 if self.apply_180_offset else converted_position_degrees                
-                # converted_position_degrees -= self.position_offset                
-                # self.position_degrees = converted_position_degrees * -1.0 if self.inverse_rotation else converted_position_degrees
-
+                self.raw_position_degrees = inverse_pos
+                self.position_degrees = inverse_pos + self.position_offset           
+              
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")
 
@@ -312,9 +306,6 @@ class Motor:
 
     def set_position_offset(self, value: float):
         self.position_offset = value
-
-    def set_apply_180_offset(self, value: bool):
-        self.apply_180_offset = value
 
     def is_error(self) -> bool:
         return self.is_hardware_error() or self.is_comms_error()

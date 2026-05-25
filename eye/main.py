@@ -19,11 +19,11 @@ SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
 CONTROLLER_FPS = 15
 
-# Eyes 4 and 6 are mounted upside down.
-EYE_INVERSIONS = [None, False, False, False, True, False, True]
-
 # Eyes 2 switch homing side for Eyes with U-Brackets that will collide with the frame during homing.
-BASE_HOME_INVERSION = [None, False, True, False, False, False, False]
+BASE_HOME_INVERSION = [None, False, False, False, False, False, False]
+
+# Eyes 4 and 6 are mounted upside down.
+EYE_INVERSIONS = [None, False, False, False, False, False, False]
 
 
 class Eye:
@@ -59,8 +59,8 @@ class Eye:
         self.motors = Motors(allow_enable=True)
 
         if self.eye_id and EYE_INVERSIONS[self.eye_id]:
-            self.motors.set_inversion_rotation(MotorName.BASE, True)
-            self.motors.set_inversion_rotation(MotorName.EYE, True)
+            self.motors.set_inversion_rotation(MotorName.BASE, not self.motors.get_inversion_rotation(MotorName.BASE))
+            self.motors.set_inversion_rotation(MotorName.EYE, not self.motors.get_inversion_rotation(MotorName.EYE))
 
         self.motors.enable_all_motors()
         self.home_motors(self.motors)
@@ -106,6 +106,7 @@ class Eye:
         Home both motors by moving into the physical endstop and polling for position halt.
         """
 
+        motor_home_target_pos_offset = 180
         motors_to_home = [MotorName.BASE, MotorName.EYE]
         operation_timeout_seconds = 5.0
         home_duration = 0.5  # Time motor is required to be stopped before considered home.
@@ -115,20 +116,29 @@ class Eye:
         homed = {motor: False for motor in motors_to_home}
 
         self.eye_renderer.set_text(TextType.INFO, "Homing motors...")
+    
+        motors.set_enforce_position_limits(MotorName.BASE, False)
+        motors.set_enforce_position_limits(MotorName.EYE, False)
 
-        motors.enforce_position_limits(MotorName.BASE, False)
-        motors.enforce_position_limits(MotorName.EYE, False)
+        base_position = motors.get_motor_position(MotorName.BASE)
+        eye_position = motors.get_motor_position(MotorName.EYE)
+        
+        #base_home_target_position = (
+         #   -motor_home_target_pos_offset if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True else motor_home_target_pos_offset
+        #)
+        base_home_target_position = motor_home_target_pos_offset
 
-        base_home_target_position = -180 if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] is True else 180
-        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=base_home_target_position)
-        motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=180.0)
+        eye_home_target_position = motor_home_target_pos_offset
+        print(base_position, base_home_target_position, base_position + base_home_target_position)
+        motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=base_position + base_home_target_position)
+        motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=eye_position + eye_home_target_position)
 
         sleep(1.0)  # Allow motors to begin moving before polling.
 
         start = time()
         while time() - start < operation_timeout_seconds:
             for motor_name in (m for m in motors_to_home if not homed[m]):
-                pos = motors.get_motor_position(motor_name)
+                pos = motors.get_motor_raw_position(motor_name)
                 delta = abs(pos - prev_positions[motor_name])
                 prev_positions[motor_name] = pos
 
@@ -149,21 +159,48 @@ class Eye:
 
             sleep(0.050)
 
-        home_position = get_motor_info(MotorName.BASE).home_position
+        home_position = get_motor_info(MotorName.BASE).home_position       
         raw_pos = motors.get_motor_raw_position(MotorName.BASE)
-        offset = -raw_pos - home_position
-        print(home_position, raw_pos, offset)
-        motors.enforce_position_limits(MotorName.BASE, True)
-        motors.motors[MotorName.BASE].set_position_offset(offset)
+        pos = motors.get_motor_position(MotorName.BASE)
+
+        #if self.eye_id is not None and BASE_HOME_INVERSION[self.eye_id] == True:
+        #    offset = raw_pos + home_position 
+        #else:
+        #    offset = -(raw_pos + home_position)
+
+        #if raw_pos > 180:
+        #    raw_pos -= 180
+
+        offset = -raw_pos + home_position
+         
+        print("END:", home_position, raw_pos, pos, offset)     
+        motors.set_enforce_position_limits(MotorName.BASE, True)
+        motors.set_position_offset(MotorName.BASE, offset)
         motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.SLOW, position=0)
 
         home_position = get_motor_info(MotorName.EYE).home_position
-        raw_pos = motors.get_motor_position(MotorName.EYE)
-        motors.enforce_position_limits(MotorName.EYE, True)
-        motors.motors[MotorName.EYE].set_position_offset(-raw_pos - home_position)
+        raw_pos = motors.get_motor_raw_position(MotorName.EYE)
+        offset = -(raw_pos - home_position)
+        motors.set_enforce_position_limits(MotorName.EYE, True)
+        motors.set_position_offset(MotorName.EYE, offset)
         motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.SLOW, position=0)
 
-        sleep(3)
+        sleep(5)
+
+        self.motors.disable_all_motors()  # TEMP    
+        while(True):
+            raw_pos = motors.get_motor_raw_position(MotorName.BASE)
+            pos = motors.get_motor_position(MotorName.BASE)
+            offset = motors.motors[MotorName.BASE].position_offset
+            t = motors.target_positions[MotorName.BASE]
+            print(raw_pos, pos, offset, t)
+            sleep(0.250)
+        
+
+
+        sleep(5)
+
+
 
     ###############################################################################
     # Thread

@@ -51,7 +51,7 @@ class CanInfo:
 # For zeroing script.
 @dataclass
 class MotorZeroInfo:
-    can_id: int
+    can_id: str
     motor_name: str
     motor_id: int
     allow_comms: bool

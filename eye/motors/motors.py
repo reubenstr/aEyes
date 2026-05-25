@@ -247,10 +247,19 @@ class Motors:
             if motor_name in self.motors:
                 return self.motors[motor_name].raw_position_degrees
             return None
+        
+    def set_position_offset(self, motor_name: str, value: float):
+        if motor_name in self.motors:
+            self.motors[motor_name].set_position_offset(value)
 
-    def enforce_position_limits(self, motor_name: str, value: bool):
+    def set_enforce_position_limits(self, motor_name: str, value: bool):
         if motor_name in self.motors:
             self.motors[motor_name].enforce_position_limits = value
+
+    def get_inversion_rotation(self, motor_name: str) -> bool:
+        if motor_name in self.motors:
+            return self.motors[motor_name].inverse_rotation
+        return None
 
     def set_inversion_rotation(self, motor_name: str, inverted: bool):
         if motor_name in self.motors:
@@ -265,17 +274,7 @@ class Motors:
             if not can_info.thread_handle.is_alive():
                 return True
         return False
-
-    def is_error(self) -> bool:
-        if self.is_can_error():
-            return True
-
-        with self.data_lock:
-            for key, motor in self.motors.items():
-                if motor.is_error():
-                    return True
-        return False
-
+ 
     ###############################################################################
     # Worker (thread)
     ###############################################################################
@@ -286,10 +285,7 @@ class Motors:
         # Get initial positions, start target, and check for offset.
         for key, motor in self.motors.items():
             if motor.allow_comms:
-                motor.req_position()
-                # if motor.position_degrees > 180.0:
-                #    motor.set_apply_180_offset(True)
-                # motor.set_apply_180_offset(True)
+                motor.req_position()                
                 self.target_positions[key] = motor.raw_position_degrees
 
         print(f"[{self.tag}] starting motor worker threads")
