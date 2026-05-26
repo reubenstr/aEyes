@@ -12,6 +12,10 @@ from depthai_nodes.node import ParsingNeuralNetwork
 from parameters import params as _params
 
 """
+    Camera:
+        Luxonis OAK-D W (wide)
+        https://shop.luxonis.com/products/oak-d-w
+
     https://models.luxonis.com/
 
     The visualizer may crash at resolutions if the camera
@@ -230,24 +234,21 @@ class Detector:
     def shutdown(self) -> None:
         if self.pipeline is not None and self.pipeline.isRunning():
             self.pipeline.stop()
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--visualizer",
-        action="store_true",
-        help="Enable DepthAI RemoteConnection image topics.",
-    )
-    return parser.parse_args()
-
+   
 
 ###############################################################################
 # Main Entry | Manual Testing
 ###############################################################################
 
 if __name__ == "__main__":
-    args = parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--visualizer",
+        action="store_true",
+        help="Enable DepthAI RemoteConnection image topics.",
+    )  
+
+    args = parser.parse_args()
     detector = Detector(enable_visualizer=args.visualizer)
     try:
         detector.run()
