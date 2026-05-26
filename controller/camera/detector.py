@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from time import sleep
 
 import depthai as dai
 import numpy as np
@@ -15,7 +16,7 @@ from depthai_nodes.node.host_spatials_calc import HostSpatialsCalc
     The visualizer may crash at resolutions if the camera
     does not emulates as a super-speed USB device.
 
-    See attached devices and negotiated speeds:
+    See attached devices and negotiated speeds (after app is running):
         lsusb -t   
 
     See USB device events:
@@ -115,11 +116,11 @@ class Detector:
 
         self.pipeline = pipeline
         self.depth_queue = stereo.depth.createOutputQueue(
-            maxSize=4,
+            maxSize=1,
             blocking=False,
         )
         self.detections_queue = nn_with_parser.out.createOutputQueue(
-            maxSize=4,
+            maxSize=1,
             blocking=False,
         )
         print("Pipeline created.")
@@ -189,6 +190,7 @@ class Detector:
     def _print_face_xyz(self) -> None:
         faces = self.poll_faces()
         if faces is None:
+            sleep(0.005)
             return
 
         if not faces:

@@ -25,7 +25,7 @@ tracker:
 
   # Track lifecycle (all in frames)
   min_hits_to_confirm: 3     # Frames before tentative → confirmed.  range: 1–10
-  max_missing_confirmed: 15  # Frames a confirmed track survives without detection.  range: 5–30
+  max_missing_confirmed: 30  # Frames a confirmed track survives without detection.  range: 5–30
   max_missing_tentative: 2   # Frames a tentative track survives without detection.  range: 1–5
 
   # Re-identification
@@ -40,7 +40,7 @@ tracker:
   # Static-face detection — faces whose rolling-max Kalman speed stays below
   # static_speed_thresh_mps for static_window consecutive matched frames are
   # classified as static and excluded from eye assignment.
-  static_window: 150             # Rolling velocity window length [frames].  range: 30–1000
+  static_window: 1000            # Rolling velocity window length [frames].  range: 30–1000
   static_speed_thresh_mps: 0.15  # Max speed to be considered static [m/s].  range: 0.01–1.0
 
 # ---------------------------------------------------------------------------
