@@ -7,10 +7,10 @@
 set -u
 
 # DEV PC
-SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+# SRC="/home/$USER/Desktop/projects/aEyes/eye/"
 
 # RPI
-# SRC="/home/$USER/aEyes/eye/"
+SRC="/home/$USER/aEyes/eye/"
 
 DST="/home/eye/aEyes/eye/"
 

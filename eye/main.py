@@ -52,13 +52,11 @@ class Eye:
         if self.eye_id and EYE_INVERSIONS[self.eye_id] is True:
             self.motors.set_inversion_rotation(MotorName.BASE, not self.motors.get_inverse_rotation(MotorName.BASE))
             self.motors.set_inversion_rotation(MotorName.EYE, not self.motors.get_inverse_rotation(MotorName.EYE))
-
-        # Allow repolling (recalcuation) of positions that may of been inversed.
-        sleep(0.5)
+            sleep(0.5) # Allow repolling (recalcuation) of positions that may of been inversed.
 
         self.motors.enable_all_motors()
         self.home_motors(self.motors)
-        self.motors.disable_all_motors()  # TEMP
+     
 
     def _init_socket(self):
         print("[Main] init zmq")

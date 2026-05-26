@@ -50,7 +50,7 @@ class Controller:
             assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
             static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
             print(
-                f"[frame {frame_idx}] detected={detected_count}  "
+                f"[Main][frame {frame_idx}] detected={detected_count}  "
                 f"positioned={len(detections)}  tracked={len(tracked_faces)}  "
                 f"assigned={assigned}  static={static_count}"
             )
@@ -61,8 +61,16 @@ class Controller:
                     radius=state.radius,
                     rotation_deg=state.rotation,
                     eye_lid_position=state.eye_lid,
-                    iris_color=(state.iris_color.red, state.iris_color.green, state.iris_color.blue),
-                    cornea_color=(state.striation_color.red, state.striation_color.green, state.striation_color.blue),
+                    iris_color=(
+                        state.iris_color.red,
+                        state.iris_color.green,
+                        state.iris_color.blue,
+                    ),
+                    cornea_color=(
+                        state.striation_color.red,
+                        state.striation_color.green,
+                        state.striation_color.blue,
+                    ),
                     is_cat_eye=state.is_cat_eye,
                     yaw=state.yaw,
                     pitch=state.pitch,
