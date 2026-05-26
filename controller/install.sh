@@ -2,9 +2,11 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Install dependencies
-# echo "Installing system dependancies"
-# apt install python3.8-venv
+# Must be run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run with sudo or as root"
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # Create virtual environment if it does not exist
@@ -27,7 +29,6 @@ else
     echo "requirements.txt not found!"
     exit 1
 fi
-
 
 # -----------------------------------------------------------------------------
 # Configure ethernet with static IP
