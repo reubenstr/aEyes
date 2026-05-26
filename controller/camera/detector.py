@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import depthai as dai
@@ -9,6 +10,15 @@ from depthai_nodes.node.host_spatials_calc import HostSpatialsCalc
 
 """
     https://models.luxonis.com/
+
+    The visualizer may crash at resolutions if the camera
+    does not emulates as a super-speed USB device.
+
+    See attached devices and negotiated speeds:
+        lsusb -t   
+
+    See USB device events:
+        dmesg | grep -i usb
 """
 
 
@@ -21,6 +31,7 @@ NN_SHAVES = 6
 DEPTH_LOWER_THRESHOLD_MM = 200
 DEPTH_UPPER_THRESHOLD_MM = 5000
 SPATIAL_BBOX_SCALE = 0.5
+HTTP_PORT = 8082
 
 
 class Detector:
@@ -30,16 +41,19 @@ class Detector:
         self,
         model_archive: Path | str = MODEL_ARCHIVE,
         fps_limit: int = FPS_LIMIT,
-        http_port: int = 8082,
+        enable_visualizer: bool = False,
     ) -> None:
         self.model_archive = Path(model_archive)
         self.fps_limit = fps_limit
+        self.enable_visualizer = enable_visualizer
 
         print("Creating OAK-D device...")
-        self.visualizer = dai.RemoteConnection(httpPort=http_port)
+        self.visualizer = (
+            dai.RemoteConnection(httpPort=HTTP_PORT) if self.enable_visualizer else None
+        )
         self.device = dai.Device(dai.DeviceInfo())
         self.platform = self.device.getPlatformAsString()
-        print(f"Platform: {self.platform}")
+        print(f"Platform: {self.platform}, USB speed: {self.device.getUsbSpeed()}")
 
         self.pipeline: dai.Pipeline | None = None
         self.depth_queue: dai.MessageQueue | None = None
@@ -86,8 +100,9 @@ class Detector:
         )
         self.host_spatials.setDeltaRoi(5)
 
-        self.visualizer.addTopic("Video", nn_with_parser.passthrough, "images")
-        self.visualizer.addTopic("Detections", nn_with_parser.out, "images")
+        if self.visualizer is not None:
+            self.visualizer.addTopic("Video", nn_with_parser.passthrough, "images")
+            self.visualizer.addTopic("Detections", nn_with_parser.out, "images")
 
         self.pipeline = pipeline
         self.depth_queue = stereo.depth.createOutputQueue(
@@ -105,17 +120,21 @@ class Detector:
             raise RuntimeError("Detector pipeline was not created.")
 
         self.pipeline.start()
-        self.visualizer.registerPipeline(self.pipeline)
-        print("Detector running. Press q in the visualizer to quit.")
+        if self.visualizer is not None:
+            self.visualizer.registerPipeline(self.pipeline)
+            print("Detector running. Press q in the visualizer to quit.")
+        else:
+            print("Detector running without visualizer. Press Ctrl+C to quit.")
         print("XYZ is in the DepthAI camera frame: X=right, Y=down, Z=forward.")
 
         while self.pipeline.isRunning():
             self._print_face_xyz()
 
-            key = self.visualizer.waitKey(1)
-            if key == ord("q"):
-                print("Got q key from the remote connection!")
-                break
+            if self.visualizer is not None:
+                key = self.visualizer.waitKey(1)
+                if key == ord("q"):
+                    print("Got q key from the remote connection!")
+                    break
 
     def _print_face_xyz(self) -> None:
         if self.depth_queue is None or self.detections_queue is None:
@@ -207,8 +226,23 @@ class Detector:
             self.pipeline.stop()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--visualizer",
+        action="store_true",
+        help="Enable DepthAI RemoteConnection image topics.",
+    )
+    return parser.parse_args()
+
+
+###############################################################################
+# Main Entry | Manual Testing
+###############################################################################
+
 if __name__ == "__main__":
-    detector = Detector()
+    args = parse_args()
+    detector = Detector(enable_visualizer=args.visualizer)
     try:
         detector.run()
     except KeyboardInterrupt:
