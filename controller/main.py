@@ -13,7 +13,7 @@ from parameters import params as _params
 class Controller:
     def __init__(self):
         self.running = True
-        self.detector = Detector()
+        self.detector = Detector(enable_visualizer = True)
         self.tracker = FaceTracker()
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
         self.publisher = Publisher()

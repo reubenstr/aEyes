@@ -9,6 +9,7 @@ from data_types import (
     EyeConfig,
     EyeId,
     EyeAssignmentState,
+    Position3D,
     TrackedFaces,
 )
 from parameters import params as _params
@@ -24,7 +25,7 @@ class EyeAssigner:
 
     Each eye is described by a :class:`EyeConfig` that carries its
     physical position relative to the base link.  When a free eye must be
-    chosen for a new face assignment, the **closest eye in the X-Y plane**
+    chosen for a new face assignment, the **closest eye in the Y-Z plane**
     is selected.
 
     Parameters
@@ -184,8 +185,7 @@ class EyeAssigner:
                     break
 
             pos = self._current_faces[target_face_id].position
-            face_x, face_y = pos.x, pos.y
-            best_eye_id = self._closest_available_eye(face_x, face_y)
+            best_eye_id = self._closest_available_eye(pos)
             if best_eye_id is None:
                 break
 
@@ -200,7 +200,7 @@ class EyeAssigner:
     def _steal_for_uncovered_faces(self, active_face_ids: list[FaceId]) -> None:
         """
         For every face that still has zero eyes after normal assignment,
-        find the donor face — the one with >1 eyes whose X-Y position is
+        find the donor face — the one with >1 eyes whose Y-Z position is
         closest to the uncovered face — and immediately transfer one eye.
 
         This ensures all faces are covered even when the available pool is
@@ -225,24 +225,30 @@ class EyeAssigner:
             if not donors:
                 break
 
-            ux, uy = self._current_faces[uncovered_fid].position.x, self._current_faces[uncovered_fid].position.y
+            uncovered_pos = self._current_faces[uncovered_fid].position
 
-            # Pick the donor face closest in X-Y to the uncovered face
+            # Pick the donor face closest in Y-Z to the uncovered face
             donor_fid = min(
                 donors,
-                key=lambda fid: math.sqrt(
-                    (self._current_faces[fid].position.x - ux) ** 2 +
-                    (self._current_faces[fid].position.y - uy) ** 2
+                key=lambda fid: (
+                    self._layout_distance_sq(
+                        self._current_faces[fid].position,
+                        uncovered_pos,
+                    ),
+                    fid,
                 ),
             )
 
-            # Steal the eye from the donor that is closest in X-Y to the
+            # Steal the eye from the donor that is closest in Y-Z to the
             # uncovered face, so the transferred eye needs minimal re-pointing
             stolen_gid = min(
                 face_load[donor_fid],
-                key=lambda gid: math.sqrt(
-                    (self._configs[gid].position.x - ux) ** 2 +
-                    (self._configs[gid].position.y - uy) ** 2
+                key=lambda gid: (
+                    self._layout_distance_sq(
+                        self._configs[gid].position,
+                        uncovered_pos,
+                    ),
+                    gid,
                 ),
             )
             face_load[donor_fid].remove(stolen_gid)
@@ -253,23 +259,27 @@ class EyeAssigner:
             if len(face_load[donor_fid]) <= 1:
                 donors.remove(donor_fid)
 
-    def _closest_available_eye(self, face_x: float, face_y: float) -> EyeId | None:
+    @staticmethod
+    def _layout_distance_sq(a: Position3D, b: Position3D) -> float:
+        """Squared distance on the physical eye layout plane: Y left, Z up."""
+        return (a.y - b.y) ** 2 + (a.z - b.z) ** 2
+
+    def _closest_available_eye(self, face_pos: Position3D) -> EyeId | None:
         """
-        Return the eye_id from the available pool whose X-Y position
-        (from its EyeConfig) is closest to (face_x, face_y).
+        Return the eye_id from the available pool whose Y-Z position
+        (from its EyeConfig) is closest to the face position.
         Returns None if the pool is empty.
         """
-        best_id: EyeId | None = None
-        best_dist = float("inf")
+        if not self._available_pool:
+            return None
 
-        for gid in self._available_pool:
-            cfg = self._configs[gid]
-            dist = math.sqrt((cfg.position.x - face_x) ** 2 + (cfg.position.y - face_y) ** 2)
-            if dist < best_dist:
-                best_dist = dist
-                best_id = gid
-
-        return best_id
+        return min(
+            self._available_pool,
+            key=lambda gid: (
+                self._layout_distance_sq(self._configs[gid].position, face_pos),
+                gid,
+            ),
+        )
 
     def _rebalance(self, active_face_ids: list[FaceId], now: float) -> None:
         """

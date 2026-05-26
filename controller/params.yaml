@@ -6,7 +6,7 @@
 # System timing
 # ---------------------------------------------------------------------------
 system:
-  refresh_rate_hz: 15        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
+  refresh_rate_hz: 10        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
 
 # ---------------------------------------------------------------------------
 # Network / ZMQ publisher
@@ -24,13 +24,13 @@ tracker:
   embedding_weight: 0.3      # 0=position-only matching, 1=embedding-only.  range: 0–1
 
   # Track lifecycle (all in frames)
-  min_hits_to_confirm: 3     # Frames before tentative → confirmed.  range: 1–10
+  min_hits_to_confirm: 30     # Frames before tentative → confirmed.  range: 1–10
   max_missing_confirmed: 30  # Frames a confirmed track survives without detection.  range: 5–30
-  max_missing_tentative: 2   # Frames a tentative track survives without detection.  range: 1–5
+  max_missing_tentative: 5   # Frames a tentative track survives without detection.  range: 1–5
 
   # Re-identification
-  reid_window_frames: 30     # Frames a lost track is retained for re-ID.  range: 10–60
-  reid_max_distance: 0.8     # Spatial search radius for re-ID matching [m].  range: 0.5–2.0
+  reid_window_frames: 45     # Frames a lost track is retained for re-ID.  range: 10–60
+  reid_max_distance: 1.0     # Spatial search radius for re-ID matching [m].  range: 0.5–2.0
 
   # Output smoothing
   ema_alpha: 0.4             # EMA smoothing on output position. Lower = smoother, laggier.  range: 0–1
