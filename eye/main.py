@@ -220,8 +220,11 @@ class Eye:
                             self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
 
                             if self.motors:
-                                self.commanded_yaw = self.ramp_target(self.commanded_yaw, msg.yaw)
-                                self.commanded_pitch = self.ramp_target(self.commanded_pitch, msg.pitch)
+                                # self.commanded_yaw = self.ramp_target(self.commanded_yaw, msg.yaw)
+                                # self.commanded_pitch = self.ramp_target(self.commanded_pitch, msg.pitch)
+                                self.commanded_yaw =  msg.yaw
+                                self.commanded_pitch = msg.pitch
+                                
                                 self.motors.set_motor_targets(motor_name=MotorName.BASE, speed=MotorSpeeds.FAST, position=self.commanded_yaw)
                                 self.motors.set_motor_targets(motor_name=MotorName.EYE, speed=MotorSpeeds.FAST, position=self.commanded_pitch)
 

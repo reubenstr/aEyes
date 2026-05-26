@@ -50,9 +50,12 @@ class Controller:
             assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
             static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
             print(
-                f"[Main][frame {frame_idx}] detected={detected_count}  "
-                f"positioned={len(detections)}  tracked={len(tracked_faces)}  "
-                f"assigned={assigned}  static={static_count}"
+                f"[Main][frame {frame_idx}]  "
+                f"detected={detected_count}  "
+                f"positioned={len(detections)}  "
+                f"tracked={len(tracked_faces)}  "
+                f"assigned={assigned}  "
+                f"static={static_count}  "
             )
             frame_idx += 1
 
