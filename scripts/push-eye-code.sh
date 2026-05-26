@@ -7,10 +7,10 @@
 set -u
 
 # DEV PC
-# SRC="/home/$USER/Desktop/projects/aEyes/eye/"
+SRC="/home/$USER/Desktop/projects/aEyes/eye/"
 
 # RPI
-SRC="/home/$USER/aEyes/eye/"
+# SRC="/home/$USER/aEyes/eye/"
 
 DST="/home/eye/aEyes/eye/"
 
@@ -24,23 +24,30 @@ HOSTS=(
 )
 
 DRY_RUN=false
+NO_RESET=false
+
 if [[ "${1:-}" == "--dry-run" ]]; then
 	DRY_RUN=true
 	echo "Dry run mode — no changes will be made"
 fi
 
+if [[ "${1:-}" == "--no-reset" ]]; then
+	NO_RESET=true
+	echo "No reset — main service will not be reset"
+fi
+
 for h in "${HOSTS[@]}"; do
 
-	echo -n "Syncing to $h... "
+	echo -n "Pushing eye code to $h... "
 
 	EXCLUDES=(
 		--exclude='.git/'
 		--exclude='.venv/'
 		--exclude='.env'
-		--exclude='.motors-zeroed'
 		--exclude='__pycache__/'
 		--exclude='*.pyc'
 	)
+
 	RSYNC_OPTS=(-az --delete "${EXCLUDES[@]}")
 	$DRY_RUN && RSYNC_OPTS+=(--dry-run)
 
@@ -57,7 +64,7 @@ for h in "${HOSTS[@]}"; do
 	fi
 	echo "OK"
 
-	if ! $DRY_RUN; then
+	if [ "$DRY_RUN" == "false" ] && [ "$NO_RESET" == "false" ]; then
 		echo -n "Restarting main.service on $h... "
 		if ssh "eye@$h" "sudo systemctl restart main.service" 2>/dev/null; then
 			echo "OK"

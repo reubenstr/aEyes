@@ -63,7 +63,7 @@ class Motor:
         self.allow_comms: bool = allow_comms
         self.allow_motion: bool = allow_motion
         self.can_channel: str = can_channel
-        self.bus: Bus = bus     
+        self.bus: Bus = bus
 
         self.tag = f"[Motor][{name}]"
         self.prints_enabled: bool = False
@@ -74,6 +74,7 @@ class Motor:
         self.current: float = 0
         self.motor_speed: int = 0
         self.encoder_position: int = 0
+        self.raw_position_degrees: float = 0
         self.position_degrees: float = 0
 
         # Motor fault states (from motor driver):
@@ -84,8 +85,7 @@ class Motor:
 
         # Motor states:
         self.enabled: bool = False
-        self.angle_limit_breached = False
-
+  
         # Communication states:
         self.send_error: bool = False
         self.reply_timeout_seconds: float = 0.050
@@ -101,10 +101,10 @@ class Motor:
 
         # Other config:
         self.position_offset: float = 0.0
-        self.apply_180_offset: bool = False
         self.max_reply_timeouts_allow: int = 3
+        self.enforce_position_limits: bool = True
 
-        self.ARBRITATION_BASE_OFFSET: int = 0x140
+        self.ARBITRATION_BASE_OFFSET: int = 0x140
 
     ###############################################################################
     # Operations
@@ -112,7 +112,7 @@ class Motor:
 
     def op_can_send_message(self, motor_id: int, data: list):
         try:
-            identifier = self.ARBRITATION_BASE_OFFSET + motor_id
+            identifier = self.ARBITRATION_BASE_OFFSET + motor_id
             if self.prints_enabled:
                 print(f"{self.tag} sending message, bus={self.bus.channel_info}, motor_id={motor_id}, arbitration_id=0x{identifier:X}, data={data}")
             msg = can.Message(is_extended_id=False, arbitration_id=identifier, data=data)
@@ -127,8 +127,10 @@ class Motor:
 
     def op_wait_for_reply(self) -> Optional[can.Message]:
         reply = self.bus.recv(self.reply_timeout_seconds)
-        if reply == None:
+        if reply is None:
             self.reply_timeout_count += 1
+        else:
+            self.reply_timeout_count = 0
         return reply
 
     ###############################################################################
@@ -139,7 +141,7 @@ class Motor:
         if not self.op_can_send_message(self.motor_id, [0x88, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        success = reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+        success = reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
         if success:
             self.enabled = True
         return success
@@ -148,7 +150,7 @@ class Motor:
         if not self.op_can_send_message(self.motor_id, [0x80, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        success = reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+        success = reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
         if success:
             self.enabled = False
         return success
@@ -157,28 +159,28 @@ class Motor:
         if not self.op_can_send_message(self.motor_id, [0x81, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET  
+        return reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
 
     def cmd_clear_motor_errors(self):
         if not self.op_can_send_message(self.motor_id, [0x9B, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+        return reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
 
     def cmd_set_zero_to_current_pos(self):
         if not self.op_can_send_message(self.motor_id, [0x19, 0, 0, 0, 0, 0, 0, 0]):
             return False
         reply = self.op_wait_for_reply()
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+        return reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
 
     def cmd_set_pid_to_ram(self, angle_kp: int, angle_ki: int, speed_kp: int, speed_ki: int, iq_kp: int, iq_ki: int):
         """
         Sets PID parameters to RAM; invalid upon power cycle.
         """
         if not self.op_can_send_message(self.motor_id, [0x34, 0, angle_kp, angle_ki, speed_kp, speed_ki, iq_kp, iq_ki]):
-            print("[Motor] failed to send pid to motor!")   
-        reply = self.op_wait_for_reply()        
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+            print("[Motor] failed to send pid to motor!")
+        reply = self.op_wait_for_reply()
+        return reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
 
     def cmd_set_angle_and_speed(
         self,
@@ -190,20 +192,26 @@ class Motor:
         Datasheet named as: cmd_motor_multi_angle_2
         """
 
-        position = position * -1.0 if self.inverse_rotation else position
-        position += self.position_offset
-        position = max(self.min_position + self.position_offset, min(self.max_position + self.position_offset, position))
+        if self.enforce_position_limits:
+            position = max(self.min_position, min(self.max_position, position))
+      
+        position -= self.position_offset
 
+        position = -position if self.inverse_rotation else position  
+       
         speed_low_byte = speed & 0x00FF
         speed_high_byte = speed >> 8 & 0x00FF
-        angle_byte_0 = int(position * 1000.0) >> 0 & 0x000000FF
-        angle_byte_1 = int(position * 1000.0) >> 8 & 0x000000FF
-        angle_byte_2 = int(position * 1000.0) >> 16 & 0x000000FF
-        angle_byte_3 = int(position * 1000.0) >> 24 & 0x000000FF
+
+        angle_raw = int(position * 1000.0) & 0xFFFFFFFF
+        angle_byte_0 = (angle_raw >> 0) & 0xFF
+        angle_byte_1 = (angle_raw >> 8) & 0xFF
+        angle_byte_2 = (angle_raw >> 16) & 0xFF
+        angle_byte_3 = (angle_raw >> 24) & 0xFF
+        
         if not self.op_can_send_message(self.motor_id, [0xA4, 0, speed_low_byte, speed_high_byte, angle_byte_0, angle_byte_1, angle_byte_2, angle_byte_3]):
             return False
         reply = self.op_wait_for_reply()
-        return reply and self.motor_id == reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+        return reply and self.motor_id == reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
 
     ###############################################################################
     # Requests
@@ -213,7 +221,7 @@ class Motor:
         if self.op_can_send_message(self.motor_id, [0x30, 0, 0, 0, 0, 0, 0, 0]):
             reply = self.op_wait_for_reply()
             if reply:
-                reply_motor_id = reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+                reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
                 if self.motor_id == reply_motor_id and reply.data:
                     self.angle_kp = reply.data[2]
                     self.angle_ki = reply.data[3]
@@ -232,7 +240,7 @@ class Motor:
         if self.op_can_send_message(self.motor_id, [0x9A, 0, 0, 0, 0, 0, 0, 0]):
             reply = self.op_wait_for_reply()
             if reply:
-                reply_motor_id = reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+                reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
                 if self.motor_id == reply_motor_id and reply.data:
                     self.temperature = reply.data[1]
                     self.voltage = (reply.data[2] | reply.data[3] << 8) / 100.0  # Datasheet is wrong, not DATA[3] and DATA[4].
@@ -249,12 +257,12 @@ class Motor:
         if self.op_can_send_message(self.motor_id, [0x9C, 0, 0, 0, 0, 0, 0, 0]):
             reply = self.op_wait_for_reply()
             if reply:
-                reply_motor_id = reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
+                reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
                 if self.motor_id == reply_motor_id and reply.data:
                     self.temperature = reply.data[1]
-                    current_raw = self.convert_twos_compliment(reply.data[2] | reply.data[3] << 8)
+                    current_raw = self.convert_twos_complement(reply.data[2] | reply.data[3] << 8)
                     self.current = self.map_range(float(current_raw), -2000.0, 2000.0, -33.0, 33.0)
-                    self.motor_speed = self.convert_twos_compliment(reply.data[4] | reply.data[5] << 8)
+                    self.motor_speed = self.convert_twos_complement(reply.data[4] | reply.data[5] << 8)
                     self.encoder_position = reply.data[6] | reply.data[7] << 8
                     if self.prints_enabled:
                         print(
@@ -269,12 +277,17 @@ class Motor:
             return None
         reply = self.op_wait_for_reply()
         if reply:
-            reply_motor_id = reply.arbitration_id - self.ARBRITATION_BASE_OFFSET
-            if self.motor_id == reply_motor_id:
+            reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
+            if self.motor_id == reply_motor_id:  
+
+
+                #raw_data = int.from_bytes(reply.data[1:8] + b'\x00', byteorder='little', signed=True)
+                #raw_pos = raw_data / 1000.0
+
                 reply_data = reply.data
 
                 # The data appears to be shifted right by 8 bits which breaks int64 twos compliment convention.
-                raw_position: int = (
+                raw_data: int = (
                     (reply_data[1] << 8)  # Low byte
                     | (reply_data[2] << 16)  # Byte 2
                     | (reply_data[3] << 24)  # Byte 3
@@ -282,13 +295,16 @@ class Motor:
                     | (reply_data[5] << 40)  # Byte 5
                     | (reply_data[6] << 48)  # Byte 6
                     | (reply_data[7] << 56)  # Byte 7
-                ) 
+                )
 
-                converted_position_degrees = (self.convert_twos_compliment_64(raw_position) >> 8) / 1000.0
-                converted_position_degrees = converted_position_degrees - 360.0 if self.apply_180_offset else converted_position_degrees
-                converted_position_degrees -= self.position_offset
-                self.position_degrees = converted_position_degrees * -1.0 if self.inverse_rotation else converted_position_degrees
+                raw_pos = (self.convert_twos_compliment_64(raw_data) >> 8) / 1000.0
+                inverse_pos = raw_pos * -1.0 if self.inverse_rotation else raw_pos
+                      
 
+                inverse_pos = -raw_pos if self.inverse_rotation else raw_pos    
+                self.raw_position_degrees = inverse_pos                
+                self.position_degrees = inverse_pos + self.position_offset           
+              
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")
 
@@ -301,9 +317,6 @@ class Motor:
 
     def set_position_offset(self, value: float):
         self.position_offset = value
-
-    def set_apply_180_offset(self, value: bool):
-        self.apply_180_offset = value
 
     def is_error(self) -> bool:
         return self.is_hardware_error() or self.is_comms_error()
@@ -325,18 +338,18 @@ class Motor:
     # Helpers
     ###############################################################################
     @staticmethod
-    def convert_twos_compliment(value):
+    def convert_twos_complement(value):
         if value >= 0x8000:  # 0x8000 is 32768 in decimal, the value of the MSB for 16-bit
             return value - 0x10000  # 0x10000 is 65536, the range of 16-bit unsigned integer
         return value
-
+    
     @staticmethod
     def convert_twos_compliment_64(value):
         max_int64 = 2**63 - 1
         if value > max_int64:
             value -= 2**64
         return value
-
+    
     @staticmethod
     def twos_complement_to_float_64(value):
         # Define the max value for signed 64-bit integer
@@ -350,7 +363,7 @@ class Motor:
 
         # Now value is a signed integer
         return float(value)
-
+  
     @staticmethod
     def map_range(x, in_min, in_max, out_min, out_max):
         return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min

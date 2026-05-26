@@ -24,7 +24,7 @@ class MotorName(StrEnum):
 
 
 @dataclass
-class MotorInfo:
+class MotorConfig:
     name: MotorName
     can_channel: str
     id: int
@@ -33,7 +33,7 @@ class MotorInfo:
     inverse_rotation: bool
     allow_motion: bool
     allow_comms: bool
-    home_position: float | None
+    home_position: float
 
 
 @dataclass
@@ -51,7 +51,7 @@ class CanInfo:
 # For zeroing script.
 @dataclass
 class MotorZeroInfo:
-    can_id: int
+    can_id: str
     motor_name: str
     motor_id: int
     allow_comms: bool

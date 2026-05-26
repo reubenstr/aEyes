@@ -9,7 +9,12 @@ set -u
 
 SRC_HOST="eye1.local"
 SRC="/home/eye/aEyes/eye/"
+
+# DEV PC
 DST="/home/$USER/Desktop/projects/aEyes/eye/"
+
+# RPI
+# DST="/home/$USER/aEyes/eye/"
 
 echo "Pulling eye code from $SRC_HOST..."
 
@@ -17,7 +22,6 @@ EXCLUDES=(
 	--exclude='.git/'
 	--exclude='.venv/'
 	--exclude='.env'
-	--exclude='.motors-zeroed'
 	--exclude='__pycache__/'
 	--exclude='*.pyc'
 )
