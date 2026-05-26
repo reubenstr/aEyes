@@ -6,7 +6,7 @@
 # System timing
 # ---------------------------------------------------------------------------
 system:
-  refresh_rate_hz: 15        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
+  refresh_rate_hz: 20        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
 
 # ---------------------------------------------------------------------------
 # Network / ZMQ publisher

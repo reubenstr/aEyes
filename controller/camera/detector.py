@@ -85,6 +85,13 @@ class Detector:
 
         cam = pipeline.create(dai.node.Camera)
         rgb = cam.build(dai.CameraBoardSocket.CAM_A)
+        rgb_out = rgb.requestOutput(
+            size=self._nn_input_size(nn_archive),
+            type=self._nn_frame_type(),
+            resizeMode=dai.ImgResizeMode.LETTERBOX,
+            fps=self.fps_limit,
+            enableUndistortion=True,
+        )
 
         stereo = pipeline.create(dai.node.StereoDepth).build(
             True,
@@ -96,9 +103,8 @@ class Detector:
         stereo.setSubpixel(False)
 
         nn_with_parser = pipeline.create(ParsingNeuralNetwork).build(
-            rgb,
+            rgb_out,
             nn_archive,
-            fps=self.fps_limit,
         )
         # Leave enough SHAVEs for StereoDepth, ImageManip, and spatial calculation.
         nn_with_parser.setNNArchive(nn_archive, numShaves=NN_SHAVES)
@@ -230,6 +236,26 @@ class Detector:
             return None
 
         return tuple(value / 1000.0 for value in xyz_mm)
+
+    @staticmethod
+    def _nn_input_size(nn_archive: dai.NNArchive) -> tuple[int, int]:
+        inputs = nn_archive.getConfig().model.inputs
+        if len(inputs) != 1:
+            raise ValueError(f"Expected one model input, got {len(inputs)}.")
+
+        shape = inputs[0].shape
+        layout = inputs[0].layout
+        if layout == "NCHW":
+            return (shape[3], shape[2])
+        if layout == "NHWC":
+            return (shape[2], shape[1])
+
+        raise ValueError(f"Unsupported model input layout: {layout}")
+
+    def _nn_frame_type(self) -> dai.ImgFrame.Type:
+        if self.platform == "RVC4":
+            return dai.ImgFrame.Type.BGR888i
+        return dai.ImgFrame.Type.BGR888p
 
     def shutdown(self) -> None:
         if self.pipeline is not None and self.pipeline.isRunning():
