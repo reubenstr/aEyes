@@ -2,11 +2,9 @@ import os
 import depthai as dai
 from pathlib import Path
 from depthai_nodes.node import ParsingNeuralNetwork, ImgFrameOverlay, ApplyColormap
-from utils.input import create_input_node
-
 
 '''
-https://models.luxonis.com/
+    https://models.luxonis.com/
 
 '''
 
@@ -38,16 +36,13 @@ with dai.Pipeline(device) as pipeline:
     nn_archive = dai.NNArchive(Path(MODEL_ARCHIVE))
     
     # media/camera input
-    input_node = create_input_node(
-        pipeline,
-        platform,
-        None
-    )
+
+    cam = pipeline.create(dai.node.Camera)
+    input_node = cam.build()
 
     nn_with_parser = pipeline.create(ParsingNeuralNetwork).build(
         input_node, nn_archive, fps=FPS_LIMIT
     )
-
    
     visualizer.addTopic("Video", nn_with_parser.passthrough, "images")
     visualizer.addTopic("Detections", nn_with_parser.out, "images")
