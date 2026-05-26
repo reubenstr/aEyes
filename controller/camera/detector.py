@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
 
 import depthai as dai
-import numpy as np
 from depthai_nodes.node import ParsingNeuralNetwork
-from depthai_nodes.node.host_spatials_calc import HostSpatialsCalc
 
 """
     https://models.luxonis.com/
@@ -45,7 +44,7 @@ class DetectedFace:
 
 
 class Detector:
-    """Standalone OAK-D face detector with depth-backed XYZ output."""
+    """Standalone OAK-D face detector with device-side depth-backed XYZ output."""
 
     def __init__(
         self,
@@ -66,10 +65,7 @@ class Detector:
         print(f"Platform: {self.platform}, USB speed: {self.device.getUsbSpeed()}")
 
         self.pipeline: dai.Pipeline | None = None
-        self.depth_queue: dai.MessageQueue | None = None
-        self.detections_queue: dai.MessageQueue | None = None
-        self.host_spatials: HostSpatialsCalc | None = None
-        self.latest_depth: dai.ImgFrame | None = None
+        self.spatial_detections_queue: dai.MessageQueue | None = None
         self.latest_faces_xyz_m: list[tuple[float, float, float]] = []
         self._build_pipeline()
 
@@ -102,24 +98,37 @@ class Detector:
         # Leave enough SHAVEs for StereoDepth, ImageManip, and spatial calculation.
         nn_with_parser.setNNArchive(nn_archive, numShaves=NN_SHAVES)
 
-        self.host_spatials = HostSpatialsCalc(
-            self.device.readCalibration(),
-            depthAlignmentSocket=dai.CameraBoardSocket.CAM_A,
-            threshLow=DEPTH_LOWER_THRESHOLD_MM,
-            threshHigh=DEPTH_UPPER_THRESHOLD_MM,
+        # SpatialLocationCalculator requires matching transform metadata between
+        # detections and depth, so align depth to the exact NN input frame.
+        depth_align = pipeline.create(dai.node.ImageAlign)
+        depth_align.setRunOnHost(False)
+        depth_align.setOutKeepAspectRatio(False)
+        stereo.depth.link(depth_align.input)
+        nn_with_parser.passthrough.link(depth_align.inputAlignTo)
+
+        spatial_calc = pipeline.create(dai.node.SpatialLocationCalculator)
+        spatial_calc.setRunOnHost(False)
+        spatial_calc.initialConfig.setDepthThresholds(
+            DEPTH_LOWER_THRESHOLD_MM,
+            DEPTH_UPPER_THRESHOLD_MM,
         )
-        self.host_spatials.setDeltaRoi(5)
+        spatial_calc.initialConfig.setBoundingBoxScaleFactor(SPATIAL_BBOX_SCALE)
+        spatial_calc.initialConfig.setCalculationAlgorithm(
+            dai.SpatialLocationCalculatorAlgorithm.MEDIAN
+        )
+        depth_align.outputAligned.link(spatial_calc.inputDepth)
+        nn_with_parser.out.link(spatial_calc.inputDetections)
 
         if self.visualizer is not None:
             self.visualizer.addTopic("Video", nn_with_parser.passthrough, "images")
-            self.visualizer.addTopic("Detections", nn_with_parser.out, "images")
+            self.visualizer.addTopic(
+                "Detections",
+                spatial_calc.outputDetections,
+                "images",
+            )
 
         self.pipeline = pipeline
-        self.depth_queue = stereo.depth.createOutputQueue(
-            maxSize=1,
-            blocking=False,
-        )
-        self.detections_queue = nn_with_parser.out.createOutputQueue(
+        self.spatial_detections_queue = spatial_calc.outputDetections.createOutputQueue(
             maxSize=1,
             blocking=False,
         )
@@ -135,27 +144,24 @@ class Detector:
     def poll_faces(self) -> list[DetectedFace] | None:
         """Poll one detector frame.
 
-        Returns None until a new detection message and at least one depth frame
-        are available. XYZ values are in the DepthAI camera frame:
+        Returns None until a new spatial detection message is available. XYZ
+        values are in the DepthAI camera frame:
         X=right, Y=down, Z=forward.
         """
-        if self.depth_queue is None or self.detections_queue is None:
+        if self.spatial_detections_queue is None:
             raise RuntimeError("Detector queues were not created.")
 
         self.start()
 
-        for depth_frame in self.depth_queue.tryGetAll():
-            self.latest_depth = depth_frame
-
-        detection_msgs = self.detections_queue.tryGetAll()
-        if not detection_msgs or self.latest_depth is None:
+        detection_msgs = self.spatial_detections_queue.tryGetAll()
+        if not detection_msgs:
             return None
 
         detections_msg = detection_msgs[-1]
         faces: list[DetectedFace] = []
         self.latest_faces_xyz_m = []
         for face in detections_msg.detections:
-            xyz = self._face_xyz_m(face, self.latest_depth)
+            xyz = self._spatial_detection_xyz_m(face)
             if xyz is not None:
                 self.latest_faces_xyz_m.append(xyz)
             faces.append(DetectedFace(confidence=face.confidence, xyz_m=xyz))
@@ -209,59 +215,16 @@ class Detector:
                 f"xyz_m=({x_m:.3f}, {y_m:.3f}, {z_m:.3f})"
             )
 
-    def _face_xyz_m(
-        self,
-        face: dai.ImgDetection,
-        depth_frame: dai.ImgFrame,
+    @staticmethod
+    def _spatial_detection_xyz_m(
+        face: dai.SpatialImgDetection,
     ) -> tuple[float, float, float] | None:
-        if self.host_spatials is None:
-            return None
-
-        depth = depth_frame.getFrame()
-        height, width = depth.shape[:2]
-        roi = self._detection_roi(face, width, height)
-        spatials = self.host_spatials.calcSpatials(
-            depth_frame,
-            roi,
-            averagingMethod=np.median,
-        )
-        xyz_mm = (spatials["x"], spatials["y"], spatials["z"])
-        if any(np.isnan(value) for value in xyz_mm):
+        coords = face.spatialCoordinates
+        xyz_mm = (coords.x, coords.y, coords.z)
+        if any(not math.isfinite(value) for value in xyz_mm) or coords.z <= 0:
             return None
 
         return tuple(value / 1000.0 for value in xyz_mm)
-
-    def _detection_roi(
-        self,
-        detection: dai.ImgDetection,
-        width: int,
-        height: int,
-    ) -> list[int]:
-        shrink = (1.0 - SPATIAL_BBOX_SCALE) / 2.0
-        xmin = detection.xmin + (detection.xmax - detection.xmin) * shrink
-        ymin = detection.ymin + (detection.ymax - detection.ymin) * shrink
-        xmax = detection.xmax - (detection.xmax - detection.xmin) * shrink
-        ymax = detection.ymax - (detection.ymax - detection.ymin) * shrink
-
-        if xmin >= xmax:
-            center_x = (detection.xmin + detection.xmax) / 2.0
-            xmin = center_x - 0.01
-            xmax = center_x + 0.01
-        if ymin >= ymax:
-            center_y = (detection.ymin + detection.ymax) / 2.0
-            ymin = center_y - 0.01
-            ymax = center_y + 0.01
-
-        return [
-            self._normalized_to_index(xmin, width),
-            self._normalized_to_index(ymin, height),
-            self._normalized_to_index(xmax, width),
-            self._normalized_to_index(ymax, height),
-        ]
-
-    @staticmethod
-    def _normalized_to_index(value: float, limit: int) -> int:
-        return min(max(int(value * limit), 0), limit - 1)
 
     def shutdown(self) -> None:
         if self.pipeline is not None and self.pipeline.isRunning():
