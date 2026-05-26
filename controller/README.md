@@ -55,6 +55,9 @@ Execute the installation script:
 ./install.sh
 ```
 
+## OAK-D W
 
+
+bash -c "$(curl -fsSL https://oakctl-releases.luxonis.com/oakctl-installer.sh)"
 
 

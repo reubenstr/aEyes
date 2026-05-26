@@ -17,6 +17,7 @@ else
     python3 -m venv .venv
 fi
 
+# Activate virtual environment
 . .venv/bin/activate
 
 # -----------------------------------------------------------------------------
