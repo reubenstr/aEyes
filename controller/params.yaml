@@ -6,7 +6,7 @@
 # System timing
 # ---------------------------------------------------------------------------
 system:
-  refresh_rate_hz: 20        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
+  refresh_rate_hz: 15        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
 
 # ---------------------------------------------------------------------------
 # Network / ZMQ publisher
@@ -55,7 +55,7 @@ kalman:
 # Eye assigner
 # ---------------------------------------------------------------------------
 assigner:
-  assign_interval_s: 1.0     # Min seconds between assigning extra eyes to already-covered faces.
+  assign_interval_s: 0.5     # Min seconds between assigning extra eyes to already-covered faces.
 
 # ---------------------------------------------------------------------------
 # Eye manager — animation
