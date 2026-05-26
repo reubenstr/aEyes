@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "/home/nvidia/aEyes/controller/.venv/bin/python",
+  "python.defaultInterpreterPath": "/home/aeyes/aEyes/controller/.venv/bin/python",
   "python.analysis.extraPaths": [
     "/home/nvidia/aEyes/controller",
     "/home/nvidia/aEyes/eye"
