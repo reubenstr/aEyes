@@ -35,7 +35,13 @@ class Controller:
 
     def run(self):
         frame_idx = 0
+        last_frame_time = time.perf_counter()
         while self.running:
+            now = time.perf_counter()
+            elapsed = now - last_frame_time
+            fps = 1.0 / elapsed if elapsed > 0 else 0.0
+            last_frame_time = now
+
             faces = self.detector.poll_faces()
             detections = [
                 self._camera_xyz_to_detection(face.xyz_m)
@@ -51,6 +57,7 @@ class Controller:
             static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
             print(
                 f"[Main][frame {frame_idx}]  "
+                f"fps={fps:.1f}  "
                 f"detected={detected_count}  "
                 f"positioned={len(detections)}  "
                 f"tracked={len(tracked_faces)}  "

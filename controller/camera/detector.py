@@ -9,6 +9,8 @@ from time import sleep
 import depthai as dai
 from depthai_nodes.node import ParsingNeuralNetwork
 
+from parameters import params as _params
+
 """
     https://models.luxonis.com/
 
@@ -23,11 +25,10 @@ from depthai_nodes.node import ParsingNeuralNetwork
 """
 
 
-MODEL = "luxonis/yunet:640x480"
 MODEL_ARCHIVE = (
-    Path(__file__).resolve().parent / "models" / "yunet-s-480x640.rvc2.tar.xz"
+    Path(__file__).resolve().parent / "models" / "YuNet-640x360.rvc2.tar.xz"
 )
-FPS_LIMIT = 15
+FPS_LIMIT = _params.system.refresh_rate_hz
 NN_SHAVES = 6
 DEPTH_LOWER_THRESHOLD_MM = 200
 DEPTH_UPPER_THRESHOLD_MM = 5000
