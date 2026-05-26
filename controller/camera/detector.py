@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
 import depthai as dai
@@ -32,6 +33,14 @@ DEPTH_LOWER_THRESHOLD_MM = 200
 DEPTH_UPPER_THRESHOLD_MM = 5000
 SPATIAL_BBOX_SCALE = 0.5
 HTTP_PORT = 8082
+
+
+@dataclass(frozen=True)
+class DetectedFace:
+    """A face detected by the OAK-D pipeline."""
+
+    confidence: float
+    xyz_m: tuple[float, float, float] | None
 
 
 class Detector:
@@ -115,11 +124,52 @@ class Detector:
         )
         print("Pipeline created.")
 
-    def run(self) -> None:
-        if self.pipeline is None or self.depth_queue is None:
+    def start(self) -> None:
+        if self.pipeline is None:
             raise RuntimeError("Detector pipeline was not created.")
 
-        self.pipeline.start()
+        if not self.pipeline.isRunning():
+            self.pipeline.start()
+
+    def poll_faces(self) -> list[DetectedFace] | None:
+        """Poll one detector frame.
+
+        Returns None until a new detection message and at least one depth frame
+        are available. XYZ values are in the DepthAI camera frame:
+        X=right, Y=down, Z=forward.
+        """
+        if self.depth_queue is None or self.detections_queue is None:
+            raise RuntimeError("Detector queues were not created.")
+
+        self.start()
+
+        for depth_frame in self.depth_queue.tryGetAll():
+            self.latest_depth = depth_frame
+
+        detection_msgs = self.detections_queue.tryGetAll()
+        if not detection_msgs or self.latest_depth is None:
+            return None
+
+        detections_msg = detection_msgs[-1]
+        faces: list[DetectedFace] = []
+        self.latest_faces_xyz_m = []
+        for face in detections_msg.detections:
+            xyz = self._face_xyz_m(face, self.latest_depth)
+            if xyz is not None:
+                self.latest_faces_xyz_m.append(xyz)
+            faces.append(DetectedFace(confidence=face.confidence, xyz_m=xyz))
+
+        return faces
+
+    def poll_face_xyz_m(self) -> list[tuple[float, float, float]]:
+        """Poll valid face positions in the DepthAI camera frame."""
+        faces = self.poll_faces()
+        if faces is None:
+            return []
+        return [face.xyz_m for face in faces if face.xyz_m is not None]
+
+    def run(self) -> None:
+        self.start()
         if self.visualizer is not None:
             self.visualizer.registerPipeline(self.pipeline)
             print("Detector running. Press q in the visualizer to quit.")
@@ -137,31 +187,21 @@ class Detector:
                     break
 
     def _print_face_xyz(self) -> None:
-        if self.depth_queue is None or self.detections_queue is None:
+        faces = self.poll_faces()
+        if faces is None:
             return
 
-        for depth_frame in self.depth_queue.tryGetAll():
-            self.latest_depth = depth_frame
-
-        detections_msg = self.detections_queue.tryGet()
-        if detections_msg is None or self.latest_depth is None:
-            return
-
-        faces = detections_msg.detections
-        self.latest_faces_xyz_m = []
         if not faces:
             print("faces=0")
             return
 
         print(f"faces={len(faces)}")
         for idx, face in enumerate(faces):
-            xyz = self._face_xyz_m(face, self.latest_depth)
-            if xyz is None:
+            if face.xyz_m is None:
                 print(f"  face[{idx}] conf={face.confidence:.2f} xyz_m=(no depth)")
                 continue
 
-            x_m, y_m, z_m = xyz
-            self.latest_faces_xyz_m.append((x_m, y_m, z_m))
+            x_m, y_m, z_m = face.xyz_m
             print(
                 f"  face[{idx}] conf={face.confidence:.2f} "
                 f"xyz_m=({x_m:.3f}, {y_m:.3f}, {z_m:.3f})"

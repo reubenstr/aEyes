@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from data_types import Detection, Position3D, ControlMessage
-from detector import Detector
+from camera.detector import Detector
 from face_tracker import FaceTracker
 from eye_manager import EyeManager
 from config import EYE_CONFIGS, CAMERA_CONFIG
@@ -18,6 +18,17 @@ class Controller:
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
         self.publisher = Publisher()
 
+    @staticmethod
+    def _camera_xyz_to_detection(xyz_m: tuple[float, float, float]) -> Detection:
+        x_right, y_down, z_forward = xyz_m
+        return Detection(
+            position=Position3D(
+                x=z_forward,
+                y=-x_right,
+                z=-y_down,
+            )
+        )
+
     ###############################################################################
     # Main Loop
     ###############################################################################
@@ -25,31 +36,24 @@ class Controller:
     def run(self):
         frame_idx = 0
         while self.running:
-            color_bgr, depth_u16, intr = self.detector.cam.get_aligned_frames()
-            if color_bgr is None:
-                continue
-
-            dets, _ = self.detector.det.detect(color_bgr)
-
-            # Convert FaceDetection (pixel bbox) → Detection (3D position in meters).
-            # The detector returns raw bounding boxes in image coordinates; face_xyz()
-            # back-projects the bbox centre through the RealSense depth frame using
-            # camera intrinsics to produce a metric Position3D.
-            # Faces where depth is unavailable or out of range are skipped.
-            detections = []
-            for f in dets:
-                xyz = self.detector.cam.face_xyz(depth_u16, intr, f.bbox_xyxy)
-                if xyz is not None:
-                    # Remap from RealSense camera frame (X=right, Y=down, Z=forward)
-                    # to system frame (X=forward, Y=left, Z=up)
-                    detections.append(Detection(position=Position3D(x=xyz[2], y=-xyz[0], z=-xyz[1])))
+            faces = self.detector.poll_faces()
+            detections = [
+                self._camera_xyz_to_detection(face.xyz_m)
+                for face in faces or []
+                if face.xyz_m is not None
+            ]
 
             tracked_faces = self.tracker.update(detections)
             eye_states = self.eye_mgr.update(tracked_faces)
 
+            detected_count = len(faces) if faces is not None else 0
             assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
             static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
-            print(f"[frame {frame_idx}] detected={len(dets)}  tracked={len(tracked_faces)}  assigned={assigned}  static={static_count}")
+            print(
+                f"[frame {frame_idx}] detected={detected_count}  "
+                f"positioned={len(detections)}  tracked={len(tracked_faces)}  "
+                f"assigned={assigned}  static={static_count}"
+            )
             frame_idx += 1
 
             messages = {
