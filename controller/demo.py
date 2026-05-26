@@ -18,7 +18,9 @@ from parameters import params as _params
     Active virtual environment:
         source .venv/bin/activate
 
-    sudo apt-get install -y libxcb-cursor0
+    Extra dependancies:   
+        python3 -m pip install PySide6 pyqtgraph PyOpenGL  
+        sudo apt-get install -y libxcb-cursor0
 """
 
 
