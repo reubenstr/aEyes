@@ -13,6 +13,10 @@ from parameters import params as _params
 """
     Generates demo face locations and passing data through the pipeline to the physical eyes.
     No camera or inference.
+    Sends data to eyes.
+
+    Active virtual environment:
+        source .venv/bin/activate
 
     sudo apt-get install -y libxcb-cursor0
 """

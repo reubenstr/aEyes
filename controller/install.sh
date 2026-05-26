@@ -8,28 +8,35 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+USER_NAME="${SUDO_USER:-$USER}"
+USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
+USER_BASHRC="$USER_HOME/.bashrc"
+ROOT_DIR="$(pwd -P)"
+VENV_DIR="$ROOT_DIR/.venv"
+
 # -----------------------------------------------------------------------------
-# Create virtual environment if it does not exist
-if [ -d ".venv" ]; then
+# Create virtual environment as the non-root user
+if [ -d "$VENV_DIR" ]; then
     echo "Virtual environment already exists. Skipping creation."
 else
-    echo "Creating virtual environment"
-    python3 -m venv .venv
+    echo "Creating virtual environment as $USER_NAME"
+    sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR"
 fi
 
-# Activate virtual environment
-. .venv/bin/activate
-
 # -----------------------------------------------------------------------------
-# Install requirements
-echo "Installing python dependancies from requirements.txt"
-if [ -f "requirements.txt" ]; then
-    pip install --upgrade pip
-    pip install -r requirements.txt
+# Install requirements as the non-root user
+echo "Installing python dependencies from requirements.txt as $USER_NAME"
+if [ -f "$ROOT_DIR/requirements.txt" ]; then
+    sudo -u "$USER_NAME" bash -lc "
+        source '$VENV_DIR/bin/activate'
+        python -m pip install --upgrade pip
+        python -m pip install -r '$ROOT_DIR/requirements.txt'
+    "
 else
     echo "requirements.txt not found!"
     exit 1
 fi
+
 
 # -----------------------------------------------------------------------------
 # Configure ethernet with static IP

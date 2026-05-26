@@ -12,6 +12,8 @@ from config import EYE_CONFIGS, CAMERA_CONFIG
 
 """
     Standalone plot for testing tracking and assignment algorithms.
+    Generates test face locations.
+    Does not send data.
 """
 
 # ---------------------------------------------------------------------------
