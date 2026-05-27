@@ -24,9 +24,10 @@ tracker:
   embedding_weight: 0.3      # 0=position-only matching, 1=embedding-only.  range: 0–1
 
   # Track lifecycle (all in frames)
-  min_hits_to_confirm: 30     # Frames before tentative → confirmed.  range: 1–10
-  max_missing_confirmed: 30  # Frames a confirmed track survives without detection.  range: 5–30
-  max_missing_tentative: 5   # Frames a tentative track survives without detection.  range: 1–5
+  min_hits_to_confirm: 30                      # Frames before tentative -> confirmed.  range: 1-60
+  min_hits_to_confirm_reacquiring_tracks: 30   # Frames before reacquiring -> confirmed.  range: 1-60
+  max_missing_confirmed: 30                    # Frames a confirmed track survives without detection.  range: 5-30
+  max_missing_tentative: 5                     # Frames a tentative track survives without detection.  range: 1-5
 
   # Re-identification
   reid_window_frames: 45     # Frames a lost track is retained for re-ID.  range: 10–60
