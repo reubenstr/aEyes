@@ -16,7 +16,8 @@ from parameters import params as _params
         Luxonis OAK-D W (wide)
         https://shop.luxonis.com/products/oak-d-w
 
-    https://models.luxonis.com/
+    Model Zoo:
+        https://models.luxonis.com/
 
     The visualizer may crash at resolutions if the camera
     does not emulates as a super-speed USB device.
@@ -188,14 +189,14 @@ class Detector:
 
     def run(self) -> None:
         self.start()
-        if self.visualizer is not None:
+        if self.visualizer is not None and self.pipeline is not None:
             self.visualizer.registerPipeline(self.pipeline)
             print("Detector running. Press q in the visualizer to quit.")
         else:
             print("Detector running without visualizer. Press Ctrl+C to quit.")
         print("XYZ is in the DepthAI camera frame: X=right, Y=down, Z=forward.")
 
-        while self.pipeline.isRunning():
+        while self.pipeline is not None and self.pipeline.isRunning():
             self._print_face_xyz()
 
             if self.visualizer is not None:
@@ -231,11 +232,12 @@ class Detector:
         face: dai.SpatialImgDetection,
     ) -> tuple[float, float, float] | None:
         coords = face.spatialCoordinates
-        xyz_mm = (coords.x, coords.y, coords.z)
-        if any(not math.isfinite(value) for value in xyz_mm) or coords.z <= 0:
+        x, y, z = coords.x, coords.y, coords.z
+
+        if any(not math.isfinite(v) for v in (x, y, z)) or z <= 0:
             return None
 
-        return tuple(value / 1000.0 for value in xyz_mm)
+        return (x / 1000.0, y / 1000.0, z / 1000.0)
 
     @staticmethod
     def _nn_input_size(nn_archive: dai.NNArchive) -> tuple[int, int]:
