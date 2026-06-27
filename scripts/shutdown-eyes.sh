@@ -36,6 +36,7 @@ for h in "${HOSTS[@]}"; do
 
     ERR=$(ssh \
         -i /home/aeyes/.ssh/id_ed25519 \
+        -o StrictHostKeyChecking=accept-new \
         -o ConnectTimeout=1 \
         -o BatchMode=yes \
         -o IdentitiesOnly=yes \

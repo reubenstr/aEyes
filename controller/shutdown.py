@@ -12,12 +12,12 @@ script_path = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "scripts/shutdown-e
 button = Button(BUTTON_PIN, pull_up=True, bounce_time=2.0)
 
 def shutdown():
-    print("[Shutdown] shutdown button pressed...") 
-    time.sleep(0.5)  
+    print(f"[Shutdown] calling shutdown script for eyes at: {script_path}") 
+    time.sleep(1);
     subprocess.run(["sudo", script_path])
-    time.sleep(0.5)  
+    print(f"[Shutdown] shutdown controller") 
+    time.sleep(1)  
     #subprocess.run(["sudo", "shutdown", "-h", "now"])
-
 
 button.when_pressed = shutdown
 

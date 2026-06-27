@@ -19,6 +19,7 @@ LOCAL_HOST="$(hostname -s)"
 
 for h in "${HOSTS[@]}"; do
 
+	echo "You will be prompted for the password for each eye"
 	echo "Copying ssh key to $h... "
 
 	if [[ "$h" == "$LOCAL_HOST" ]]; then
