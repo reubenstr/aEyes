@@ -17,7 +17,7 @@ def shutdown():
     subprocess.run(["sudo", script_path])
     print(f"[Shutdown] shutdown controller") 
     time.sleep(1)  
-    #subprocess.run(["sudo", "shutdown", "-h", "now"])
+    subprocess.run(["sudo", "shutdown", "-h", "now"])
 
 button.when_pressed = shutdown
 

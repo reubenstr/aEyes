@@ -440,6 +440,7 @@ dist/
 
 # Drawio
 *.bkp
+*.dtmp
 
 # Torch/Yolo
 *.whl
@@ -447,3 +448,6 @@ dist/
 
 # Luxonis (depth camera)
 *.depthai_cached_models
+
+#lgpio lib temp file
+*.lgd-nfy0

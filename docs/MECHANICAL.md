@@ -40,7 +40,6 @@ Base bracket to 2040
         Vertical: 8x M5x15mm
         Horizontal:  
 
-
     Eye Wires:        
         Power wires: 260mm + after sheath
         Ethernet: 250 + after sheath
@@ -58,14 +57,7 @@ Base bracket to 2040
 
 ## Sheath
 
-Braided sleeve 5mm inner diameter
-
-1: 
-2: 
-3: 280mm
-4: 
-5: 
-6: 
+Braided sleeve 5mm inner diameter: 280mm (all eyes)
 
 ## Eye Positions
 
@@ -81,49 +73,15 @@ Network tag colors:
 
 EYE_ID: Y (left/right), Z (up/down)
 
-
 ## Extrusions
-
-2040:
-    1x 1150.00mm
-    2x 500.00mm
-    2x 250.94mm
-    2x 216.50mm
-    2x 135.47mm
-    Note: tolerance -+1mm is OK
-
-2020:
-    4x 260mm
-    6x 300mm
-    4x 100mm
-
+  
+See CAD model
 
 ## Wires
 
 Motor for vertical orientation:
     Testing: 58cm from end of connectors
 
-
 ### MISC
 
-current motor wire length: 170mm 
-
-
-
----------------------------------------------------------------
-
-NEW NEW NEW
-
-U-Channel to extension brackets:
-    M3x12mm
-
-
-
-
-2040:
-    1x 1100.00mm
-    2x 440.00mm
-    2x 244.62mm
-    2x 191.50mm   
-    2x 137.81mm
-    Note: tolerance -+1mm is OK
+Current motor wire length: 170mm 
