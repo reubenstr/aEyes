@@ -34,7 +34,13 @@ for h in "${HOSTS[@]}"; do
     CMD="sudo shutdown now"
     $REBOOT && CMD="sudo shutdown -r now"
 
-    ERR=$(ssh -o ConnectTimeout=1 -o BatchMode=yes "eye@$h" "$CMD" 2>&1)
+    ERR=$(ssh \
+        -i /home/aeyes/.ssh/id_ed25519 \
+        -o ConnectTimeout=1 \
+        -o BatchMode=yes \
+        -o IdentitiesOnly=yes \
+        "eye@$h" "$CMD" 2>&1)
+
     if [[ $? -ne 0 ]]; then
         echo "failed — ${ERR}"
     else

@@ -81,6 +81,38 @@ nmcli con up "$ETH_CON"
 
 echo "Ethernet setup complete"
 
+
+# -----------------------------------------------------------------------------
+# Install shutdown.service
+echo "Installing service for shutdown.py"
+
+tee /etc/systemd/system/shutdown.service > /dev/null << EOF
+[Unit]
+Description=Shutdown Service
+After=multi-user.target
+
+[Service]
+Type=simple
+WorkingDirectory=$USER_HOME/aEyes/controller
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=$USER_HOME/.Xauthority
+ExecStart=$USER_HOME/aEyes/controller/.venv/bin/python $USER_HOME/aEyes/controller/shutdown.py --service
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable shutdown.service
+systemctl restart shutdown.service
+
+echo "Run this command to see the service status: sudo systemctl status shutdown.service"
+echo "Run this command to see live logs: sudo journalctl -u shutdown.service -f"
+
+
 echo ""
 echo "DEV: PREMATURE EXIT. IN DEVELOPMENT, NOT READY FOR SERVICE."
 exit
@@ -114,7 +146,6 @@ systemctl restart main.service
 
 echo "Run this command to see the service status: sudo systemctl status main.service"
 echo "Run this command to see live logs: sudo journalctl -u main.service -f"
-
 
 
 # -----------------------------------------------------------------------------
