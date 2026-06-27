@@ -19,6 +19,7 @@ from parameters import params as _params
 class TrackStatus:
     TENTATIVE = "tentative"
     CONFIRMED = "confirmed"
+    REACQUIRING = "reacquiring"
     LOST      = "lost"
 
 
@@ -42,6 +43,13 @@ class Track:
     # Optional: face embedding for re-ID
     embedding: Optional[np.ndarray] = None
 
+    # Candidate state used while proving that a reacquired detection is stable.
+    reacquire_kalman: KalmanFilter3D | None = None
+    reacquire_hits: int = 0
+    reacquire_embedding: Optional[np.ndarray] = None
+    reacquire_from_lost: bool = False
+    reacquire_lost_age: int = 0
+
     # History of raw positions (for debugging / visualisation)
     position_history: deque = field(default_factory=lambda: deque(maxlen=300))
 
@@ -56,6 +64,9 @@ class Track:
         self.smooth_z = pos.z
 
     def predict(self):
+        if self.status == TrackStatus.REACQUIRING and self.reacquire_kalman is not None:
+            self.reacquire_kalman.predict()
+            return
         self.kalman.predict()
 
     def update(self, position: Position3D, embedding: Optional[np.ndarray] = None):
@@ -64,16 +75,7 @@ class Track:
         self.consecutive_hits += 1
         self.missing_frames = 0
 
-        # Update embedding with EMA if provided
-        if embedding is not None:
-            if self.embedding is None:
-                self.embedding = embedding.copy()
-            else:
-                keep = _params.tracker.embedding_ema_keep
-                self.embedding = keep * self.embedding + (1 - keep) * embedding
-                norm = np.linalg.norm(self.embedding)
-                if norm > 0:
-                    self.embedding /= norm
+        self._update_embedding(embedding)
 
         # EMA smoothing on output position
         kp = self.kalman.position
@@ -92,6 +94,81 @@ class Track:
             per_frame_thresh = _params.tracker.static_speed_thresh_mps / _params.system.refresh_rate_hz
             self.is_static = max(self.speed_window) < per_frame_thresh
 
+    def start_reacquire(
+        self,
+        position: Position3D,
+        embedding: Optional[np.ndarray] = None,
+        *,
+        from_lost: bool = False,
+        lost_age: int = 0,
+    ):
+        self.status = TrackStatus.REACQUIRING
+        self.reacquire_kalman = KalmanFilter3D(position)
+        self.reacquire_hits = 1
+        self.reacquire_embedding = embedding.copy() if embedding is not None else None
+        self.reacquire_from_lost = from_lost
+        self.reacquire_lost_age = lost_age
+
+    def update_reacquire(self, position: Position3D, embedding: Optional[np.ndarray] = None):
+        if self.reacquire_kalman is None:
+            self.start_reacquire(position, embedding)
+            return
+
+        self.reacquire_kalman.update(position)
+        self.reacquire_hits += 1
+        if embedding is not None:
+            self.reacquire_embedding = embedding.copy()
+
+    def accept_reacquire(self):
+        if self.reacquire_kalman is None:
+            return
+
+        self.kalman = self.reacquire_kalman
+        self.hits += self.reacquire_hits
+        self.consecutive_hits = self.reacquire_hits
+        self.missing_frames = 0
+        self.status = TrackStatus.CONFIRMED
+
+        pos = self.kalman.position
+        self.smooth_x = pos.x
+        self.smooth_y = pos.y
+        self.smooth_z = pos.z
+        self.position_history.append(pos)
+        self._update_embedding(self.reacquire_embedding)
+
+        self.reacquire_kalman = None
+        self.reacquire_hits = 0
+        self.reacquire_embedding = None
+        self.reacquire_from_lost = False
+        self.reacquire_lost_age = 0
+
+    def discard_reacquire(self) -> tuple[bool, int]:
+        from_lost = self.reacquire_from_lost
+        lost_age = self.reacquire_lost_age + self.reacquire_hits
+
+        self.reacquire_kalman = None
+        self.reacquire_hits = 0
+        self.reacquire_embedding = None
+        self.reacquire_from_lost = False
+        self.reacquire_lost_age = 0
+        self.status = TrackStatus.LOST if from_lost else TrackStatus.CONFIRMED
+
+        return from_lost, lost_age
+
+    def _update_embedding(self, embedding: Optional[np.ndarray] = None):
+        if embedding is None:
+            return
+
+        if self.embedding is None:
+            self.embedding = embedding.copy()
+            return
+
+        keep = _params.tracker.embedding_ema_keep
+        self.embedding = keep * self.embedding + (1 - keep) * embedding
+        norm = np.linalg.norm(self.embedding)
+        if norm > 0:
+            self.embedding /= norm
+
     def mark_missing(self):
         # Keep the Kalman filter predicting forward even when there is no
         # detection. This extrapolates the face's position using its last
@@ -104,6 +181,8 @@ class Track:
 
     @property
     def predicted_position(self) -> Position3D:
+        if self.status == TrackStatus.REACQUIRING and self.reacquire_kalman is not None:
+            return self.reacquire_kalman.position
         return self.kalman.position
 
     @property
@@ -123,7 +202,10 @@ class FaceTracker:
         self.depth_scale_factor = p.depth_scale_factor
         self.embedding_weight   = p.embedding_weight
         # Track lifecycle
-        self.min_hits_to_confirm   = p.min_hits_to_confirm
+        self.min_hits_to_confirm = p.min_hits_to_confirm
+        self.min_hits_to_confirm_reacquiring_tracks = (
+            p.min_hits_to_confirm_reacquiring_tracks
+        )
         self.max_missing_confirmed = p.max_missing_confirmed
         self.max_missing_tentative = p.max_missing_tentative
         # Re-identification
@@ -144,7 +226,8 @@ class FaceTracker:
         """
         Process one frame of detections.
 
-        Returns TrackedFaces (dict[FaceId, Position3D]) for all CONFIRMED tracks.
+        Returns TrackedFaces for confirmed tracks and active tracks that are
+        holding their last confirmed output while reacquiring.
         """
         # 1. Predict all active tracks forward one step
         for track in self.tracks.values():
@@ -159,31 +242,55 @@ class FaceTracker:
         # 3. Update matched tracks
         for det_idx, track_id in matched:
             det = detections[det_idx]
-            self.tracks[track_id].update(det.position, det.embedding)
-            if (self.tracks[track_id].consecutive_hits >= self.min_hits_to_confirm
-                    and self.tracks[track_id].status == TrackStatus.TENTATIVE):
-                self.tracks[track_id].status = TrackStatus.CONFIRMED
+            track = self.tracks[track_id]
+
+            if track.status == TrackStatus.REACQUIRING:
+                track.update_reacquire(det.position, det.embedding)
+                self._confirm_reacquire_if_ready(track)
+            elif track.status == TrackStatus.CONFIRMED and track.missing_frames > 0:
+                track.start_reacquire(det.position, det.embedding)
+                self._confirm_reacquire_if_ready(track)
+            else:
+                track.update(det.position, det.embedding)
+                if (track.consecutive_hits >= self.min_hits_to_confirm
+                        and track.status == TrackStatus.TENTATIVE):
+                    track.status = TrackStatus.CONFIRMED
 
         # 4. Age unmatched active tracks
         for track_id in unmatched_tracks:
             track = self.tracks[track_id]
+
+            if track.status == TrackStatus.REACQUIRING:
+                from_lost, lost_age = track.discard_reacquire()
+                if from_lost:
+                    del self.tracks[track_id]
+                    if lost_age <= self.reid_window_frames:
+                        self.lost_tracks.append((lost_age, track))
+                    continue
+
             track.mark_missing()
             max_miss = (self.max_missing_confirmed
                         if track.status == TrackStatus.CONFIRMED
                         else self.max_missing_tentative)
             if track.missing_frames > max_miss:
                 track.status = TrackStatus.LOST
-                self.lost_tracks.append([0, track])
+                self.lost_tracks.append((0, track))
                 del self.tracks[track_id]
 
         # 5. Try to re-identify remaining unmatched detections against lost tracks
         still_unmatched = []
         for det_idx in unmatched_dets:
             det = detections[det_idx]
-            reid_track = self._try_reid(det)
-            if reid_track is not None:
-                reid_track.update(det.position, det.embedding)
-                reid_track.status = TrackStatus.CONFIRMED
+            reid_match = self._try_reid(det)
+            if reid_match is not None:
+                lost_age, reid_track = reid_match
+                reid_track.start_reacquire(
+                    det.position,
+                    det.embedding,
+                    from_lost=True,
+                    lost_age=lost_age,
+                )
+                self._confirm_reacquire_if_ready(reid_track)
                 self.tracks[reid_track.id] = reid_track
                 # Remove from lost list
                 self.lost_tracks = [
@@ -198,19 +305,25 @@ class FaceTracker:
 
         # 7. Age lost tracks, discard old ones
         self.lost_tracks = [
-            [age + 1, t] for age, t in self.lost_tracks
+            (age + 1, t) for age, t in self.lost_tracks
             if age + 1 <= self.reid_window_frames
         ]
 
-        # 8. Return TrackedFace (position + is_static) for confirmed tracks only
+        # 8. Return TrackedFace (position + is_static) for public tracks only
         return {
             tid: TrackedFace(position=track.smoothed_position, is_static=track.is_static)
             for tid, track in self.tracks.items()
-            if track.status == TrackStatus.CONFIRMED
+            if (
+                track.status == TrackStatus.CONFIRMED
+                or (
+                    track.status == TrackStatus.REACQUIRING
+                    and not track.reacquire_from_lost
+                )
+            )
         }
 
     def get_all_tracks(self) -> dict[FaceId, Track]:
-        """Return all active tracks (confirmed + tentative)."""
+        """Return all active tracks."""
         return self.tracks
 
     # ------------------------------------------------------------------
@@ -290,21 +403,26 @@ class FaceTracker:
     # Re-identification
     # ------------------------------------------------------------------
 
-    def _try_reid(self, det: Detection) -> Optional[Track]:
+    def _try_reid(self, det: Detection) -> Optional[tuple[int, Track]]:
         """
         Try to match a new detection to a recently lost track.
         Prefers embedding similarity when available, falls back to position.
         """
-        best_track = None
+        best_match = None
         best_cost = self.reid_max_distance
 
-        for _, track in self.lost_tracks:
+        for age, track in self.lost_tracks:
             c = self._cost(det, track)
             if c < best_cost:
                 best_cost = c
-                best_track = track
+                best_match = (age, track)
 
-        return best_track
+        return best_match
+
+    def _confirm_reacquire_if_ready(self, track: Track) -> None:
+        if (track.status == TrackStatus.REACQUIRING
+                and track.reacquire_hits >= self.min_hits_to_confirm_reacquiring_tracks):
+            track.accept_reacquire()
 
     # ------------------------------------------------------------------
     # Track management

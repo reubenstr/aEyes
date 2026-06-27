@@ -32,6 +32,7 @@ class TrackerParams:
     depth_scale_factor: float
     embedding_weight: float
     min_hits_to_confirm: int
+    min_hits_to_confirm_reacquiring_tracks: int
     max_missing_confirmed: int
     max_missing_tentative: int
     reid_window_frames: int
@@ -96,6 +97,8 @@ def _validate(p: Params) -> None:
           "tracker.static_speed_thresh_mps must be positive")
     check(p.tracker.min_hits_to_confirm >= 1,
           "tracker.min_hits_to_confirm must be a positive integer")
+    check(p.tracker.min_hits_to_confirm_reacquiring_tracks >= 1,
+          "tracker.min_hits_to_confirm_reacquiring_tracks must be a positive integer")
     check(p.tracker.max_missing_confirmed >= 1,
           "tracker.max_missing_confirmed must be a positive integer")
     check(p.tracker.max_missing_tentative >= 1,
