@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **aEyes** is a distributed robotic eye system. A Jetson controller detects and tracks faces, then broadcasts motor and render commands to up to 6 Raspberry Pi eye units over ZMQ. Each Pi renders a procedurally animated OpenGL eye and drives two CAN-bus gimbal motors.
 
-> **Migration in progress:** `controller/detector.py` (TensorRT SCRFD via RealSense) is being replaced with an **OAK-D camera** pipeline. When working on the controller, treat detector.py as legacy. The rest of the pipeline (tracking, assignment, rendering, motors) remains intact.
-
 ## Running the System
 
 ### Controller (Jetson)
@@ -20,12 +18,6 @@ cd ~/aEyes/controller
 ```bash
 cd ~/aEyes/eye
 sudo ./main.sh     # requires sudo for CAN bus access
-```
-
-### Motor Zeroing (Raspberry Pi — required before first run)
-```bash
-cd ~/aEyes/eye
-sudo python3 zero.py   # interactive TUI: homes EYE motor against endstop, creates .motors-zeroed flag
 ```
 
 ### Deployment to Pis
@@ -70,18 +62,9 @@ class ControlMessage:
 
 ### Eye Physical Layout (config.py)
 Six eyes in a hexagonal arrangement, positions relative to system origin (meters):
-```
-Eye 1: y=-0.405, z=0.000   (far left)
-Eye 2: y=-0.205, z=+0.346  (upper left)
-Eye 3: y=+0.205, z=+0.346  (upper right)
-Eye 4: y=+0.405, z=0.000   (far right)
-Eye 5: y=+0.205, z=-0.346  (lower right)
-Eye 6: y=-0.205, z=-0.346  (lower left)
-```
-All at `x=0.0275m`; camera mounted at `y=0.030m` above origin.
 
 ### Network / Hardware
-- Controller: Jetson at `192.168.5.1`
+- Controller: Rasberry Pi 5 at `192.168.5.100`
 - Eyes: Raspberry Pi 4B at `192.168.5.101`–`192.168.5.106` (EYE_ID from `eye/.env`)
 - Each Pi: Waveshare 4" DSI LCD (1920×480, rotated 90°), Waveshare RS485/CAN Hat (`can0` at 1 Mbps)
 - Motors: 2× MG4010E-i10v3 per eye (dual-encoder CAN servo, 1:10 gearbox, 24V/3.5A)
@@ -181,7 +164,6 @@ All at `x=0.0275m`; camera mounted at `y=0.030m` above origin.
 
 ## Dependencies
 
-**Controller** (system-installed on Jetson): TensorRT, CUDA, RealSense SDK (`pyrealsense2`)
 **Controller** (`requirements.txt`): `pyzmq`, `numpy`, `scipy`, `matplotlib`
 
 **Eye** (`requirements.txt`): `pyglet`, `PyOpenGL`, `pyzmq`, `numpy`, `python-can`, `RPi.GPIO`, `rich`, `prompt_toolkit`

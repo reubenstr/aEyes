@@ -20,8 +20,17 @@ if [ -d "$VENV_DIR" ]; then
     echo "Virtual environment already exists. Skipping creation."
 else
     echo "Creating virtual environment as $USER_NAME"
-    sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR"
+    sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR" --system-site-packages
 fi
+
+
+# -----------------------------------------------------------------------------
+# System Dependancies
+echo "Installing system GPIO dependencies..."
+apt update
+apt install -y \
+    python3-lgpio \
+    python3-gpiozero
 
 # -----------------------------------------------------------------------------
 # Install requirements as the non-root user
@@ -36,7 +45,6 @@ else
     echo "requirements.txt not found!"
     exit 1
 fi
-
 
 # -----------------------------------------------------------------------------
 # Configure ethernet with static IP
