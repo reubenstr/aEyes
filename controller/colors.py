@@ -9,6 +9,7 @@ YELLOW = Color(255, 255,   0)
 CYAN = Color(  0, 255, 255)
 MAGENTA = Color(255,   0, 255)
 GREY = Color(128, 128, 128)
+BLACK = Color(0, 0, 0)
 
 COLOR_POOL: list[Color] = [
     RED,   

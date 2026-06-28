@@ -83,7 +83,7 @@ class ControlMessage:
     rotation_deg: float
     eye_lid_position: float
     iris_color: Tuple[float, float, float]
-    cornea_color: Tuple[float, float, float]
+    striation_color: Tuple[float, float, float]
     is_cat_eye: bool
     yaw: float
     pitch: float

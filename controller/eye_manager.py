@@ -5,7 +5,7 @@ import random
 import time
 
 from data_types import CameraConfig, Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
-from colors import COLOR_POOL, GREY
+from colors import COLOR_POOL, GREY, BLACK
 from conversions import Conversions
 from eye_assigner import EyeAssigner
 from parameters import params as _params
@@ -93,7 +93,7 @@ class EyeManager:
                 state.striation_color = self._lerp_color(state.striation_color, state.target_striation_color, t_in)
             else:
                 state.iris_color = self._lerp_color(state.iris_color, GREY, t_out)
-                state.striation_color = self._lerp_color(state.striation_color, GREY, t_out)
+                state.striation_color = self._lerp_color(state.striation_color, BLACK, t_out)
 
     def _update_blinks(self, now: float) -> None:
         """Animate eye_lid as a blink (open → closed → open) when a new face is assigned."""

@@ -13,7 +13,7 @@ from parameters import params as _params
 class Controller:
     def __init__(self):
         self.running = True
-        self.detector = Detector(enable_visualizer = True)
+        self.detector = Detector(enable_visualizer = False)
         self.tracker = FaceTracker()
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
         self.publisher = Publisher()
@@ -76,7 +76,7 @@ class Controller:
                         state.iris_color.green,
                         state.iris_color.blue,
                     ),
-                    cornea_color=(
+                    striation_color=(
                         state.striation_color.red,
                         state.striation_color.green,
                         state.striation_color.blue,
