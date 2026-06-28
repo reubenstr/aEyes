@@ -162,12 +162,12 @@ class EyeManager:
 
             if face_id is not None:
                 state.target_iris_color = self._face_colors[face_id]
-                state.target_striation_color = self._face_colors[face_id]
+                state.target_striation_color = BLACK # TODO: choose a color or stay black?
                 if prev_face_id != face_id:
                     self._blink_starts[eye_id] = now
             else:
                 state.target_iris_color = GREY
-                state.target_striation_color = GREY
+                state.target_striation_color = BLACK
 
         self._lerp_colors(now)
         self._update_blinks(now)

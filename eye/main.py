@@ -216,7 +216,7 @@ class Eye:
                             self.eye_renderer.set_rotation_deg(msg.rotation_deg)
                             self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
                             self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
-                            self.eye_renderer.set_striation_color_rgb255(msg.cornea_color)
+                            self.eye_renderer.set_striation_color_rgb255(msg.striation_color)
                             self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
 
                             if self.motors:
