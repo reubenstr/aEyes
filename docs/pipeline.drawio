@@ -1,0 +1,82 @@
+<mxfile host="Electron" agent="Claude Code">
+  <diagram name="Pipeline (simplified)" id="smEyes-pipeline-simple">
+    <mxGraphModel dx="983" dy="1011" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="s-title" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=18;" value="&lt;b&gt;aEyes — Pipeline Overview&lt;/b&gt;&lt;div&gt;&lt;span style=&quot;font-size: 11px;&quot;&gt;One camera frame in, one message out.&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="358" x="200" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="s-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="&lt;b&gt;Detect&lt;/b&gt;&lt;br&gt;The depth camera finds every face in the frame and measures where it is in 3D." vertex="1">
+          <mxGeometry height="70" width="360" x="200" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="s-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" value="&lt;b&gt;Track&lt;/b&gt;&lt;br&gt;Links detections frame to frame so each face keeps one identity, and smooths its motion." vertex="1">
+          <mxGeometry height="70" width="360" x="200" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="s-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" value="&lt;b&gt;Select&lt;/b&gt;&lt;br&gt;Keeps the faces worth watching — faces that never move (posters, photos) are dropped." vertex="1">
+          <mxGeometry height="70" width="360" x="200" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="s-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;" value="&lt;b&gt;Assign&lt;/b&gt;&lt;br&gt;Hands each of the 6 eyes a face to follow — nearest eye first, shared evenly between faces." vertex="1">
+          <mxGeometry height="70" width="360" x="200" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="s-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="&lt;b&gt;Color&lt;/b&gt;&lt;br&gt;Every face owns a color; the eyes on it fade to that color, and back to grey when idle." vertex="1">
+          <mxGeometry height="70" width="360" x="639" y="-15" as="geometry" />
+        </mxCell>
+        <mxCell id="s-6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="&lt;b&gt;Animate&lt;/b&gt;&lt;br&gt;Eyelids open wider for closer faces, and each eye blinks on its own random schedule." vertex="1">
+          <mxGeometry height="70" width="360" x="639" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="s-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="&lt;b&gt;Aim&lt;/b&gt;&lt;br&gt;Turns the face position into a pitch and yaw angle for each eye&#39;s own mounting point." vertex="1">
+          <mxGeometry height="70" width="360" x="639" y="225" as="geometry" />
+        </mxCell>
+        <mxCell id="s-8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" value="&lt;b&gt;Message&lt;/b&gt;&lt;br&gt;Packs all 6 eye states into a single message and send it out on the shared bus." vertex="1">
+          <mxGeometry height="70" width="360" x="639" y="345" as="geometry" />
+        </mxCell>
+        <mxCell id="s-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=12;" value="&lt;b&gt;Move &amp;amp; Render&lt;/b&gt;&lt;br&gt;Each Eye processs it&#39;s respective state and updates the LCD and motor positions." vertex="1">
+          <mxGeometry height="70" width="360" x="639" y="465" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e1" edge="1" parent="1" source="s-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-2" value="faces + 3D positions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e2" edge="1" parent="1" source="s-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-3" value="tracked faces">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e3" edge="1" parent="1" source="s-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-4" value="active faces">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e4" edge="1" parent="1" source="s-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-5" value="eye → face">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="380" y="500.01" />
+              <mxPoint x="596.45" y="500.01" />
+              <mxPoint x="596.45" y="-31.94" />
+              <mxPoint x="819.01" y="-31.94" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s-e5" edge="1" parent="1" source="s-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e6" edge="1" parent="1" source="s-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e7" edge="1" parent="1" source="s-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-8" value="eye state: angles, colors, lid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-e8" edge="1" parent="1" source="s-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=11;" target="s-9" value="serial packet">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s-loop" edge="1" parent="1" source="s-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#B85450;fontColor=#B85450;fontSize=11;verticalAlign=bottom;" target="s-1" value="next frame">
+          <mxGeometry relative="1" x="-0.4959" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="617.1" y="380" />
+              <mxPoint x="617.1" y="534.32" />
+              <mxPoint x="173.87" y="534.32" />
+              <mxPoint x="173.87" y="95.01" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
