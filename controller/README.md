@@ -64,3 +64,26 @@ Setup USB rules:
 echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | sudo tee /etc/udev/rules.d/80-movidius.rules
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
+
+# Dev Machine Setup
+
+If developing on a dedicated PC (not an RPi), instead if using the install.sh script, these are manual setup commands:
+
+```bash
+cd ./controller
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Test the pipeline displaying test data on a plot (no data is sent):
+```
+cd ./controller
+python3 ./plot.py
+```
+
+Test the pipeline displaying test data on a plot and sending data to the eyes:
+```
+cd ./controller
+python3 ./demo.py
+```
