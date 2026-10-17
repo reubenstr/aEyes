@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import colorsys
 import math
 import random
 import time
 
-from data_types import CameraConfig, Color, FaceId, EyeAssignments, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
+from data_types import CameraConfig, Color, FaceId, EyeConfig, EyeId, EyeState, EyeStates, TrackedFaces
 from colors import COLOR_POOL, GREY, BLACK
 from conversions import Conversions
 from eye_assigner import EyeAssigner
@@ -27,6 +28,7 @@ class EyeManager:
 
     def __init__(self, eye_configs: list[EyeConfig], camera_config: CameraConfig) -> None:
         p = _params.eye_manager
+        self._params = p
         # Higher = faster transition.  e.g. 3.0 ≈ 95% complete in ~1 second.
         self.COLOR_IN_RATE  = p.color_in_rate   # speed toward a face color
         self.COLOR_OUT_RATE = p.color_out_rate  # speed back toward grey
@@ -37,8 +39,27 @@ class EyeManager:
         self._conversions = Conversions(eye_configs, camera_config)
         
         self._states: dict[EyeId, EyeState] = {
-            cfg.eye_id: EyeState(eye_id=cfg.eye_id)
+            cfg.eye_id: EyeState(
+                eye_id=cfg.eye_id,
+                radius=p.radius,
+                curvature=p.curvature,
+                iris_size=p.iris_size,
+                pupil_size=p.pupil_size,
+                is_cat_eye=p.is_cat_eye,
+                pupil_color=Color(*p.pupil_color),
+                sclera_color=Color(*p.sclera_color),
+                vein_color=Color(*p.vein_color),
+                vein_count=p.vein_count,
+                vein_seed=cfg.eye_id if p.vein_seed is None else p.vein_seed,
+                eye_lid=p.eyelid_neutral_openness,
+                resting_eye_lid=p.eyelid_neutral_openness,
+            )
             for cfg in eye_configs
+        }
+        self._palette_channels = ("iris_color", "iris_accent_color", "iris_center_color", "striation_color")
+        self._color_values = {
+            eye_id: {name: getattr(state, name).as_rgb() for name in self._palette_channels}
+            for eye_id, state in self._states.items()
         }
 
         # face_id → Color, assigned once when a face is first seen
@@ -48,6 +69,7 @@ class EyeManager:
         self._blink_starts: dict[EyeId, float | None] = {
             cfg.eye_id: None for cfg in eye_configs
         }
+        self._blink_closed: set[EyeId] = set()
 
         self._last_update: float = time.monotonic()
 
@@ -66,34 +88,58 @@ class EyeManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _lerp_color(current: Color, target: Color, t: float) -> Color:
-        """
-        Linearly interpolate each channel of current toward target by t.
+    def _offset_color(color: Color, hue_offset: float, lightness: float, saturation: float) -> Color:
+        hue = colorsys.rgb_to_hls(*(c / 255.0 for c in color.as_rgb()))[0]
+        rgb = colorsys.hls_to_rgb((hue + hue_offset) % 1.0, lightness, saturation)
+        return Color(*(int(round(c * 255.0)) for c in rgb))
 
-        t is computed as 1 - exp(-speed * dt) so it is frame-rate independent.
-        """
-        return Color(
-            red=  int(current.red   + (target.red   - current.red)   * t),
-            green=int(current.green + (target.green - current.green) * t),
-            blue= int(current.blue  + (target.blue  - current.blue)  * t),
-        )
-    
-    def _lerp_colors(self, now: float) -> None:
+    def _set_palette(self, state: EyeState, base: Color | None) -> None:
+        state.target_iris_color = base if base is not None else GREY
+        for channel in ("accent", "center", "striation"):
+            if base is None:
+                color = BLACK if channel == "striation" else GREY
+            else:
+                color = self._offset_color(
+                    base,
+                    getattr(self._params, f"iris_{channel}_hue_offset"),
+                    getattr(self._params, f"iris_{channel}_lightness"),
+                    getattr(self._params, f"iris_{channel}_saturation"),
+                )
+            name = "striation_color" if channel == "striation" else f"iris_{channel}_color"
+            setattr(state, f"target_{name}", color)
+
+    def _lerp_colors(self, dt: float) -> None:
         """Lerp every eye's current color toward its target."""
-
-        dt = now - self._last_update
-        self._last_update = now
 
         t_in  = 1.0 - math.exp(-self.COLOR_IN_RATE  * dt)
         t_out = 1.0 - math.exp(-self.COLOR_OUT_RATE * dt)
 
-        for state in self._states.values():
-            if state.face_id is not None:
-                state.iris_color = self._lerp_color(state.iris_color, state.target_iris_color, t_in)
-                state.striation_color = self._lerp_color(state.striation_color, state.target_striation_color, t_in)
-            else:
-                state.iris_color = self._lerp_color(state.iris_color, GREY, t_out)
-                state.striation_color = self._lerp_color(state.striation_color, BLACK, t_out)
+        for eye_id, state in self._states.items():
+            t = t_in if state.face_id is not None else t_out
+            for name in self._palette_channels:
+                current = self._color_values[eye_id][name]
+                target = getattr(state, f"target_{name}").as_rgb()
+                rgb = tuple(c + (goal - c) * t for c, goal in zip(current, target))
+                self._color_values[eye_id][name] = rgb
+                setattr(state, name, Color(*(round(c) for c in rgb)))
+
+    def _resting_openness_for_distance(self, distance: float) -> float:
+        p = self._params
+        t = min(1.0, max(0.0, (distance - p.eyelid_near_distance_m)
+                         / (p.eyelid_far_distance_m - p.eyelid_near_distance_m)))
+        t = t * t * (3.0 - 2.0 * t)
+        return p.eyelid_near_openness + t * (p.eyelid_far_openness - p.eyelid_near_openness)
+
+    def _update_resting_eyelids(self, tracked_faces: TrackedFaces, dt: float) -> None:
+        p = self._params
+        blend = 1.0 - math.exp(-p.eyelid_smoothing_rate * dt)
+        for eye_id, state in self._states.items():
+            target = p.eyelid_neutral_openness
+            if state.face_id is not None and state.face_id in tracked_faces:
+                distance = self._conversions.get_target_distance(eye_id, tracked_faces[state.face_id].position)
+                if math.isfinite(distance):
+                    target = self._resting_openness_for_distance(distance)
+            state.resting_eye_lid += (target - state.resting_eye_lid) * blend
 
     def _update_blinks(self, now: float) -> None:
         """Animate eye_lid as a blink (open → closed → open) when a new face is assigned."""
@@ -103,17 +149,21 @@ class EyeManager:
         for eye_id, state in self._states.items():
             start = self._blink_starts[eye_id]
             if start is None:
-                state.eye_lid = 1.0
+                state.eye_lid = state.resting_eye_lid
                 continue
 
             elapsed = now - start
-            if elapsed >= blink_duration:
-                state.eye_lid = 1.0
+            # At 15 Hz the midpoint can fall between updates; send one fully closed frame.
+            if elapsed >= half and eye_id not in self._blink_closed:
+                state.eye_lid = 0.0
+                self._blink_closed.add(eye_id)
+            elif elapsed >= blink_duration:
+                state.eye_lid = state.resting_eye_lid
                 self._blink_starts[eye_id] = None
             elif elapsed < half:
-                state.eye_lid = 1.0 - (elapsed / half)   # open → closed
+                state.eye_lid = state.resting_eye_lid * (1.0 - elapsed / half)
             else:
-                state.eye_lid = (elapsed - half) / half   # closed → open
+                state.eye_lid = state.resting_eye_lid * ((elapsed - half) / half)
 
     def _update_orientation(self, tracked_faces: TrackedFaces):
         """Compute gimbal angles for each eye tracking a face"""
@@ -141,6 +191,8 @@ class EyeManager:
         """Update eye states from the latest eye assignments."""
 
         now = time.monotonic()
+        dt = max(0.0, now - self._last_update)
+        self._last_update = now
 
         # Assign eyes to faces
         assignments = self._eye_assigner.update(tracked_faces)
@@ -161,15 +213,15 @@ class EyeManager:
             state.face_id = face_id
 
             if face_id is not None:
-                state.target_iris_color = self._face_colors[face_id]
-                state.target_striation_color = BLACK # TODO: choose a color or stay black?
+                self._set_palette(state, self._face_colors[face_id])
                 if prev_face_id != face_id:
                     self._blink_starts[eye_id] = now
+                    self._blink_closed.discard(eye_id)
             else:
-                state.target_iris_color = GREY
-                state.target_striation_color = BLACK
+                self._set_palette(state, None)
 
-        self._lerp_colors(now)
+        self._lerp_colors(dt)
+        self._update_resting_eyelids(tracked_faces, dt)
         self._update_blinks(now)
         self._update_orientation(tracked_faces)      
 

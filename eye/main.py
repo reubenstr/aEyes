@@ -212,12 +212,7 @@ class Eye:
                                 print("[Main] Controller connected.")
 
                             self.eye_renderer.set_text(TextType.INFO, "")
-                            self.eye_renderer.set_radius(msg.radius)
-                            self.eye_renderer.set_rotation_deg(msg.rotation_deg)
-                            self.eye_renderer.set_eye_lid_position(msg.eye_lid_position)
-                            self.eye_renderer.set_iris_color_rgb255(msg.iris_color)
-                            self.eye_renderer.set_striation_color_rgb255(msg.striation_color)
-                            self.eye_renderer.set_is_cat_eye(msg.is_cat_eye)
+                            self.eye_renderer.apply_control_message(msg)
 
                             if self.motors:
                                 self.commanded_yaw = self.ramp_target(self.commanded_yaw, msg.yaw)

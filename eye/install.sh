@@ -134,13 +134,6 @@ echo "Adding environment variables to $ENV_FILE"
 rm -f "$ENV_FILE"
 echo "EYE_ID=$EYE_ID" >> "$ENV_FILE"
 
-# Add ENV vars to allow SSH user to start GUI application.
-echo "Adding environment variables in $USER_BASHRC"
-grep -qxF 'export DISPLAY=:0' "$USER_BASHRC" \
-    || echo 'export DISPLAY=:0' >> "$USER_BASHRC"
-grep -qxF "export XAUTHORITY=$USER_HOME/.Xauthority" "$USER_BASHRC" \
-    || echo "export XAUTHORITY=$USER_HOME/.Xauthority" >> "$USER_BASHRC"
-
 # -----------------------------------------------------------------------------
 # Install requirements
 echo "Installing Python dependencies from requirements.txt"

@@ -65,3 +65,34 @@ eye_manager:
   color_in_rate: 2.0         # Lerp speed toward face color [units/s]. Higher = faster.
   color_out_rate: 4.0        # Lerp speed back toward grey [units/s].
   blink_rate: 1.0            # Blink animation speed on new face assignment [blinks/s].
+
+  # Static appearance. Restart the controller after editing these values.
+  radius: 1.0               # Outer eye radius in shader coordinates; independent of iris/pupil size.
+  curvature: 0.2            # Surface distortion [0-1].
+  iris_size: 0.5            # Iris size [0-1].
+  pupil_size: 0.5           # Pupil size relative to the iris [0-1].
+  is_cat_eye: false
+  pupil_color: [0, 0, 0]    # All colors are RGB [0-255].
+  sclera_color: [214, 207, 199]
+  vein_color: [184, 23, 23]
+  vein_count: 8             # Primary veins [0-24]; 0 disables all veins, including forks.
+  vein_seed: null           # null uses each eye's ID; an integer gives all eyes the same pattern.
+
+  # Palette derived from each assigned face's base hue. Hue offsets are turns.
+  iris_accent_hue_offset: 0.06
+  iris_accent_lightness: 0.30
+  iris_accent_saturation: 0.55
+  iris_center_hue_offset: -0.12
+  iris_center_lightness: 0.55
+  iris_center_saturation: 0.75
+  iris_striation_hue_offset: 0.03
+  iris_striation_lightness: 0.76
+  iris_striation_saturation: 0.65
+
+  # Resting eyelid opening by distance to this eye's assigned target.
+  eyelid_near_distance_m: 0.5
+  eyelid_far_distance_m: 3.0
+  eyelid_near_openness: 1.0
+  eyelid_far_openness: 0.5
+  eyelid_neutral_openness: 0.85
+  eyelid_smoothing_rate: 6.0 # Exponential response [1/s]; higher responds faster.

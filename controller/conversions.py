@@ -32,13 +32,19 @@ class Conversions:
             for cfg in eye_configs
         }
 
+    def camera_to_base(self, position: Position3D) -> np.ndarray:
+        p_camera = np.array([position.x, position.y, position.z], dtype=float)
+        return from_homogeneous(self.T_base_camera @ to_homogeneous(p_camera))
+
+    def get_target_distance(self, eye_id: EyeId, position: Position3D) -> float:
+        p_base = self.camera_to_base(position)
+        eye_origin = self.T_base_gimbal[eye_id][:3, 3]
+        return float(np.linalg.norm(p_base - eye_origin))
+
     def get_pitch_yaw(self, eye_id: EyeId, position: Position3D) -> tuple[float, float]:
         # Position is assumed to already be in the system frame
         # (X+ forward, Y+ left, Z+ up)
-        p_camera = np.array([position.x, position.y, position.z], dtype=float)
-
-        # Camera frame -> base frame
-        p_base = from_homogeneous(self.T_base_camera @ to_homogeneous(p_camera))
+        p_base = self.camera_to_base(position)
 
         # Base frame -> yaw pivot frame
         T_gimbal_base = T_inverse(self.T_base_gimbal[eye_id])

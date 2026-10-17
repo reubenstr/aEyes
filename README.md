@@ -58,4 +58,4 @@ There are several README's through out the repository for indivdual systems:
 
 Project concept, aesthetic, engineering design, and original code base were conceived and executed by the author.
 
-Portions of this codebase were reviewed, revised, and written with the assistance of Claude Code (Anthropic).
+Portions of this codebase were reviewed, revised, and written with the assistance of various coding agents.

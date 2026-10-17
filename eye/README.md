@@ -121,36 +121,33 @@ Execute the zero.sh script per RPi.
 
 ## Development
 
-ENV vars are required to start GUI on the RPi over SSH:
-
+Show the RPi's display on the dev machine's display over SSH:
 ```bash
-export DISPLAY=:0
-export XAUTHORITY=/home/pi/.Xauthority
+ssh -Y eye@eye1.local
 ```
 
-Since the main.sh is exected via a service, stop the service prior to manually executing main.sh
-
+Since the main.sh is exected via a service, stop the service prior to manually executing main.sh:
 ```bash
 systemctl stop main.service
 ```
 
-Manually start the eye's software.
-
+Manually start the eye's main script:
 ```bash
 cd aEyes/eye
-sudo ./main.sh
+sudo env DISPLAY="$DISPLAY" XAUTHORITY=/home/eye/.Xauthority ./main.sh
 ```
 
 ### Misc. Commands and Notes
 
+Manually up the CAN interface:
 ```bash
 sudo ip link set can0 up type can bitrate 1000000
 sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
 ```
 
+Check the main service status and view logs:
 ```bash
 sudo systemctl status main.service
 sudo journalctl -u main.service -f
-
 ```

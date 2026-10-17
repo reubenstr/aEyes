@@ -67,24 +67,7 @@ class Controller:
             frame_idx += 1
 
             messages = {
-                eye_id: ControlMessage(
-                    radius=state.radius,
-                    rotation_deg=state.rotation,
-                    eye_lid_position=state.eye_lid,
-                    iris_color=(
-                        state.iris_color.red,
-                        state.iris_color.green,
-                        state.iris_color.blue,
-                    ),
-                    striation_color=(
-                        state.striation_color.red,
-                        state.striation_color.green,
-                        state.striation_color.blue,
-                    ),
-                    is_cat_eye=state.is_cat_eye,
-                    yaw=state.yaw,
-                    pitch=state.pitch,
-                )
+                eye_id: ControlMessage.from_state(state)
                 for eye_id, state in eye_states.items()
             }
             self.publisher.send(messages)

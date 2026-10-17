@@ -10,6 +10,7 @@ Usage:
 """
 
 from __future__ import annotations
+import math
 import os
 from dataclasses import dataclass
 import yaml
@@ -60,6 +61,31 @@ class EyeManagerParams:
     color_in_rate: float
     color_out_rate: float
     blink_rate: float
+    radius: float
+    curvature: float
+    iris_size: float
+    pupil_size: float
+    is_cat_eye: bool
+    pupil_color: tuple[int, int, int]
+    sclera_color: tuple[int, int, int]
+    vein_color: tuple[int, int, int]
+    vein_count: int
+    vein_seed: int | None
+    iris_accent_hue_offset: float
+    iris_accent_lightness: float
+    iris_accent_saturation: float
+    iris_center_hue_offset: float
+    iris_center_lightness: float
+    iris_center_saturation: float
+    iris_striation_hue_offset: float
+    iris_striation_lightness: float
+    iris_striation_saturation: float
+    eyelid_near_distance_m: float
+    eyelid_far_distance_m: float
+    eyelid_near_openness: float
+    eyelid_far_openness: float
+    eyelid_neutral_openness: float
+    eyelid_smoothing_rate: float
 
 
 @dataclass
@@ -120,6 +146,39 @@ def _validate(p: Params) -> None:
           "eye_manager.color_out_rate must be positive")
     check(p.eye_manager.blink_rate > 0.0,
           "eye_manager.blink_rate must be positive")
+
+    eye = p.eye_manager
+    check(math.isfinite(eye.radius) and eye.radius > 0.0,
+          "eye_manager.radius must be finite and positive")
+    for name in (
+        "curvature", "iris_size", "pupil_size",
+        "iris_accent_lightness", "iris_accent_saturation",
+        "iris_center_lightness", "iris_center_saturation",
+        "iris_striation_lightness", "iris_striation_saturation",
+        "eyelid_near_openness", "eyelid_far_openness", "eyelid_neutral_openness",
+    ):
+        check(0.0 <= getattr(eye, name) <= 1.0,
+              f"eye_manager.{name} must be in [0, 1]")
+    for name in ("iris_accent_hue_offset", "iris_center_hue_offset", "iris_striation_hue_offset"):
+        check(math.isfinite(getattr(eye, name)), f"eye_manager.{name} must be finite")
+    for name in ("pupil_color", "sclera_color", "vein_color"):
+        rgb = getattr(eye, name)
+        check(isinstance(rgb, (list, tuple)) and len(rgb) == 3
+              and all(type(c) is int and 0 <= c <= 255 for c in rgb),
+              f"eye_manager.{name} must contain three integers in [0, 255]")
+    check(type(eye.is_cat_eye) is bool, "eye_manager.is_cat_eye must be a boolean")
+    check(type(eye.vein_count) is int and 0 <= eye.vein_count <= 24,
+          "eye_manager.vein_count must be an integer in [0, 24]")
+    check(eye.vein_seed is None or type(eye.vein_seed) is int,
+          "eye_manager.vein_seed must be an integer or null")
+    check(math.isfinite(eye.eyelid_near_distance_m)
+          and math.isfinite(eye.eyelid_far_distance_m)
+          and 0.0 <= eye.eyelid_near_distance_m < eye.eyelid_far_distance_m,
+          "eye_manager eyelid distances must satisfy 0 <= near < far and be finite")
+    check(eye.eyelid_near_openness >= eye.eyelid_far_openness,
+          "eye_manager.eyelid_near_openness must be >= eyelid_far_openness")
+    check(math.isfinite(eye.eyelid_smoothing_rate) and eye.eyelid_smoothing_rate > 0.0,
+          "eye_manager.eyelid_smoothing_rate must be finite and positive")
 
 
 def _load() -> Params:

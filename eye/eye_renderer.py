@@ -3,6 +3,8 @@ import ctypes
 from enum import Enum, auto
 from pathlib import Path
 
+from data_types import ControlMessage
+
 import pyglet
 # IMPORTANT: set options BEFORE importing pyglet.gl or pyglet.graphics.shader
 pyglet.options.shadow_window = False
@@ -19,14 +21,24 @@ class TextType(Enum):
 class EyeRenderer:
     def __init__(self): 
 
-        self._start_time = time.time()
+        self._start_time = time.monotonic()
 
         # Render controls
-        self.radius: float = 0.2
+        self.radius: float = 1.0
+        self.curvature: float = 0.2
+        self.iris_size: float = 0.5
+        self.pupil_size: float = 0.5
+        self.vein_count: int = 8
+        self.vein_seed: int = 1
         self.rotation_deg: float = 0.0
-        self.eye_lid_position: float = 0.0
-        self.iris_color: tuple[float, float, float] = rgb255_srgb_to_linear(0, 255, 0)
-        self.striation_color: tuple[float, float, float] = rgb255_srgb_to_linear(255, 0, 0)
+        self.eye_lid_position: float = 0.85
+        self.iris_color = rgb255_to_normalized(128, 128, 128)
+        self.iris_accent_color = rgb255_to_normalized(128, 128, 128)
+        self.iris_center_color = rgb255_to_normalized(128, 128, 128)
+        self.striation_color = rgb255_to_normalized(0, 0, 0)
+        self.pupil_color = rgb255_to_normalized(0, 0, 0)
+        self.sclera_color = rgb255_to_normalized(214, 207, 199)
+        self.vein_color = rgb255_to_normalized(184, 23, 23)
         self.is_cat_eye: bool = False
 
         self._program: ShaderProgram | None = None
@@ -36,13 +48,18 @@ class EyeRenderer:
         # Window configuration.
         display = pyglet.display.get_display()
         screen = display.get_default_screen()
-        config = screen.get_best_config()
-        config.opengl_api = "gles"
-        config.major_version = 3
-        config.minor_version = 1
+        config = screen.get_best_config(gl.Config(
+            opengl_api="gles", major_version=3, minor_version=1, double_buffer=True,
+        ))
 
         self.window = pyglet.window.Window(fullscreen=True, style=pyglet.window.Window.WINDOW_STYLE_BORDERLESS, config=config)
         self.window.set_mouse_visible(False)
+        print(
+            f"[Renderer] {self.window.width}x{self.window.height}, "
+            f"double_buffer={self.window.config.double_buffer}, "
+            f"GL={self.window.context.get_info().get_version_string()}",
+            flush=True,
+        )
 
         self.pending_text = None
         self.pending_text_type = TextType.INFO
@@ -74,22 +91,70 @@ class EyeRenderer:
     # API
     ###############################################################################
     def set_radius(self, v: float) -> None:
-        self.radius = float(v)
+        self.radius = max(1e-4, float(v))
+
+    def set_curvature(self, v: float) -> None:
+        self.curvature = clamp01(v)
+
+    def set_iris_size(self, v: float) -> None:
+        self.iris_size = clamp01(v)
+
+    def set_pupil_size(self, v: float) -> None:
+        self.pupil_size = clamp01(v)
+
+    def set_vein_count(self, v: int) -> None:
+        self.vein_count = max(0, min(24, int(v)))
+
+    def set_vein_seed(self, v: int) -> None:
+        self.vein_seed = int(v)
 
     def set_rotation_deg(self, v: float) -> None:
         self.rotation_deg = float(v)
 
     def set_eye_lid_position(self, v: float) -> None:
-        self.eye_lid_position = float(v)
+        self.eye_lid_position = clamp01(v)
   
     def set_iris_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
-        self.iris_color = rgb255_srgb_to_linear(*rgb)
+        self.iris_color = rgb255_to_normalized(*rgb)
+
+    def set_iris_accent_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.iris_accent_color = rgb255_to_normalized(*rgb)
+
+    def set_iris_center_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.iris_center_color = rgb255_to_normalized(*rgb)
 
     def set_striation_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
-        self.striation_color = rgb255_srgb_to_linear(*rgb)
+        self.striation_color = rgb255_to_normalized(*rgb)
+
+    def set_pupil_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.pupil_color = rgb255_to_normalized(*rgb)
+
+    def set_sclera_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.sclera_color = rgb255_to_normalized(*rgb)
+
+    def set_vein_color_rgb255(self, rgb: tuple[int, int, int]) -> None:
+        self.vein_color = rgb255_to_normalized(*rgb)
 
     def set_is_cat_eye(self, value: bool) -> None:
         self.is_cat_eye = bool(value)
+
+    def apply_control_message(self, msg: ControlMessage) -> None:
+        self.set_radius(msg.radius)
+        self.set_rotation_deg(msg.rotation_deg)
+        self.set_eye_lid_position(msg.eye_lid_position)
+        self.set_iris_color_rgb255(msg.iris_color)
+        self.set_striation_color_rgb255(msg.striation_color)
+        self.set_is_cat_eye(msg.is_cat_eye)
+        self.set_iris_accent_color_rgb255(msg.iris_accent_color)
+        self.set_iris_center_color_rgb255(msg.iris_center_color)
+        self.set_pupil_color_rgb255(msg.pupil_color)
+        self.set_sclera_color_rgb255(msg.sclera_color)
+        self.set_vein_color_rgb255(msg.vein_color)
+        self.set_iris_size(msg.iris_size)
+        self.set_pupil_size(msg.pupil_size)
+        self.set_curvature(msg.curvature)
+        self.set_vein_count(msg.vein_count)
+        self.set_vein_seed(msg.vein_seed)
 
     def set_text(self, msgType: TextType, text: str) -> None:
         self.pending_text_type = msgType
@@ -157,10 +222,13 @@ class EyeRenderer:
         try:
             new_prog = self.build_program()
             self.bind_geometry_to_program(new_prog)
+            old_prog = self._program
             self._program = new_prog
+            if old_prog is not None:
+                old_prog.delete()
             print("Shaders reloaded.")
         except Exception as e:
-            print("Shader compile/link failed")
+            print(f"Shader compile/link failed: {e}")
 
     ###############################################################################
     # Handlers
@@ -191,13 +259,23 @@ class EyeRenderer:
         prog = self._program
         prog.use()
       
-        prog["iTime"] = float(time.time() - self._start_time)
+        prog["iTime"] = float(time.monotonic() - self._start_time)
         prog["iResolution"] = (float(self.window.width), float(self.window.height))
-        prog["radius"] = float(-self.radius)
+        prog["radius"] = self.radius
+        prog["curved"] = self.curvature
+        prog["irisSize"] = self.iris_size
+        prog["pupilSize"] = self.pupil_size
+        prog["numVeins"] = float(self.vein_count)
+        prog["veinSeed"] = float(self.vein_seed)
         prog["eyeLidPosition"] = self.eye_lid_position
         prog["rotation"] = float(self.rotation_deg)
         prog["irisColor"] = self.iris_color
+        prog["irisAccentColor"] = self.iris_accent_color
+        prog["irisCenterColor"] = self.iris_center_color
         prog["striationColor"] = self.striation_color
+        prog["pupilColor"] = self.pupil_color
+        prog["scleraColor"] = self.sclera_color
+        prog["veinColor"] = self.vein_color
         prog["isCatEye"] = self.is_cat_eye
 
         gl.glBindVertexArray(self._vao)
@@ -210,13 +288,12 @@ class EyeRenderer:
 # Helpers
 ###############################################################################
 
-@staticmethod
-def srgb_to_linear(c: float) -> float:
-    return c ** 2.2  # approximation
+def clamp01(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
 
-@staticmethod
-def rgb255_srgb_to_linear(r: int, g: int, b: int) -> tuple[float, float, float]:
-    return tuple(srgb_to_linear(x / 255.0) for x in (r, g, b))
+
+def rgb255_to_normalized(r: int, g: int, b: int) -> tuple[float, float, float]:
+    return tuple(clamp01(x / 255.0) for x in (r, g, b))
 
 
 ###############################################################################
