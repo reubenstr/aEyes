@@ -174,7 +174,7 @@ Eye-side network/timing constants are independent of YAML: controller address `1
 - `pull-eye-code.sh` rsyncs **eye1 → the local eye directory** for collecting edits made on that Pi. It does not run git pull on all Pis.
 - Both scripts currently use a development-PC path under `/home/$USER/Desktop/projects/aEyes/eye/`; alternative Pi paths are commented out.
 - `eye/install.sh` configures host/eye identity, firmware/display/CAN, dependencies, networking, and `main.service`. It requires sudo and restarts the service.
-- `controller/install.sh` requires sudo and installs dependencies/networking, OAK USB access, the dashboard build, nginx on port 80, and `main.service`/`aeyes-monitor.service` units. Controller and monitor activation is explicit; the existing `shutdown.service` is enabled/restarted during installation.
+- `controller/install.sh` requires sudo and prompts for independent system/Python/frontend dependencies, dashboard deployment, OAK USB access, application services, shutdown service, nginx, and Ethernet steps. `--all` selects every step without prompting. All answers are collected before changes; Ethernet runs last. Controller, monitor and shutdown-service activation/restarts are explicit; selecting nginx enables and starts/reloads it.
 - The shutdown button uses GPIO 21 and invokes `scripts/shutdown-eyes.sh` before shutting down the controller.
 
 On eye units:

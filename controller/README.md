@@ -44,16 +44,33 @@ git clone git@github.com:reubenstr/aEyes.git
 ```bash
 cd ~/aEyes/controller
 ```
-Execute the installation script:
- 
-- Setups virtual environment
-- Installs depenancies
-- Apply static IP address to ethernet
-- Installs services
+Run the interactive installer and choose all components or select individual
+steps. Each yes/no prompt defaults to **No**; all answers are collected before
+any changes are made.
 
 ```bash
 sudo ./install.sh
 ```
+
+The independent steps are system packages, Python virtual environment and
+dependencies, Node/Yarn and dashboard dependencies, dashboard build/deployment,
+OAK USB access, controller/monitor services, shutdown-button service, nginx,
+and static Ethernet configuration. Select only dependencies for manual testing,
+or only services to install/update their definitions using existing dependencies.
+Skipped steps are left unchanged; a selected step reports missing prerequisites
+rather than installing other components automatically. The nginx step installs
+its own nginx package.
+
+To install/configure everything without individual prompts:
+
+```bash
+sudo ./install.sh --all
+```
+
+`sudo ./install.sh --help` lists the components and service behavior. Python
+services are installed without enabling, starting or restarting them. The nginx
+step enables and starts/reloads nginx. Ethernet is configured last because
+applying `192.168.5.100/24` can interrupt an Ethernet SSH connection.
 
 ## OAK-D W
 
@@ -241,15 +258,17 @@ From the controller checkout on the Pi:
 
 ```bash
 sudo ./install.sh
-sudo systemctl enable --now main.service aeyes-monitor.service nginx
+# Choose all components, or use: sudo ./install.sh --all
+sudo systemctl enable --now main.service aeyes-monitor.service shutdown.service
 ```
 
-The installer uses its actual checkout path, installs the unified Python
-requirements, Node 24, Yarn and nginx, builds the UI as the deployment user, and
-copies compiled assets to `/var/www/aeyes`. It preserves the controller Ethernet
-and shutdown-service setup and installs the OAK USB rule. Controller/monitor
-startup is explicit; installation does not automatically start either new service.
-The existing shutdown service is enabled and restarted during installation.
+When all components are selected, the installer uses its actual checkout path,
+installs the Python requirements, Node 24, Yarn and nginx, builds the UI as the
+deployment user, and copies compiled assets to `/var/www/aeyes`. It configures
+the controller Ethernet address, shutdown service and OAK USB rule. Controller,
+monitor and shutdown-service startup is explicit; installation updates their
+definitions without enabling, starting or restarting them. Existing running
+Python services continue until manually restarted.
 
 Open **http://192.168.5.100/** on **port 80**. nginx serves the UI and proxies `/api`
 to the independent FastAPI backend on `127.0.0.1:8080`. WebSocket upgrade headers
@@ -267,7 +286,8 @@ sudo journalctl -u main.service -u aeyes-monitor.service -f
 sudo nginx -t
 ```
 
-To deploy frontend edits, rerun the installer to rebuild/copy assets. Restart the
+To deploy frontend edits, rerun the installer and select only dashboard
+build/deployment (also select frontend dependencies if packages changed). Restart the
 monitor service after backend code changes. An already-running controller is not
 restarted by installation; restart it explicitly after updating controller code:
 
