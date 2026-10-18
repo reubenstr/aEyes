@@ -72,6 +72,16 @@ services are installed without enabling, starting or restarting them. The nginx
 step enables and starts/reloads nginx. Ethernet is configured last because
 applying `192.168.5.100/24` can interrupt an Ethernet SSH connection.
 
+The Node/Yarn step exposes tools in `/usr/local/bin` and installs Yarn with an
+explicit `/usr/local` npm prefix. If an older installer reports `Missing command:
+yarn` just after npm successfully installed it, update the installer and rerun
+the frontend dependency step. To repair that installation directly:
+
+```bash
+sudo npm install --global --prefix /usr/local yarn@1.22.22
+/usr/local/bin/yarn --version
+```
+
 ## OAK-D W
 
 

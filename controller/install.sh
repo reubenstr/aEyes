@@ -50,6 +50,7 @@ setup_context() {
     ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
     VENV_DIR="$ROOT_DIR/.venv"
     ETH_IP="192.168.5.100/24"
+    FRONTEND_PREFIX="/usr/local"
     APT_UPDATED=false
     TASK_TMP=""
 }
@@ -106,6 +107,7 @@ install_python_dependencies() {
 }
 
 check_frontend_tools() {
+    export PATH="$FRONTEND_PREFIX/bin:$PATH"
     require_commands node yarn sudo
     if [ "$(node -p 'process.versions.node.split(".")[0]')" != 24 ] || \
        [ "$(yarn --version)" != 1.22.22 ]; then
@@ -117,6 +119,7 @@ check_frontend_tools() {
 }
 
 install_frontend_dependencies() {
+    export PATH="$FRONTEND_PREFIX/bin:$PATH"
     require_commands curl python3 dpkg tar sha256sum sudo
     prepare_tmp
     local node_arch node_version node_archive node_tool
@@ -137,13 +140,16 @@ PY
         curl --fail --silent --show-error "https://nodejs.org/dist/$node_version/SHASUMS256.txt" -o "$TASK_TMP/SHASUMS256.txt"
         (cd "$TASK_TMP" && awk -v archive="$node_archive" '$2 == archive' SHASUMS256.txt | sha256sum --check --status)
         tar -xJf "$TASK_TMP/$node_archive" -C /opt
+        install -d -m 0755 "$FRONTEND_PREFIX/bin"
         for node_tool in node npm npx; do
-            ln -sfn "/opt/node-$node_version-linux-$node_arch/bin/$node_tool" "/usr/local/bin/$node_tool"
+            ln -sfn "/opt/node-$node_version-linux-$node_arch/bin/$node_tool" "$FRONTEND_PREFIX/bin/$node_tool"
         done
     fi
     NODE_BIN="$(dirname -- "$(command -v node)")"
     if ! command -v yarn >/dev/null || [ "$(yarn --version)" != 1.22.22 ]; then
-        PATH="$NODE_BIN:$PATH" npm install --global yarn@1.22.22
+        # npm otherwise follows Node's /opt prefix, whose bin directory may be
+        # absent from both root's and the deployment user's PATH.
+        PATH="$NODE_BIN:$PATH" npm install --global --prefix "$FRONTEND_PREFIX" yarn@1.22.22
     fi
     check_frontend_tools
     (cd "$ROOT_DIR/ui" && sudo -u "$USER_NAME" env PATH="$NODE_BIN:$PATH" "$YARN_BIN" install --frozen-lockfile)

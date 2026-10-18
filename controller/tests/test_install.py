@@ -1,6 +1,7 @@
 """Exercise installer selection and service generation without root or hardware."""
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -40,6 +41,7 @@ setup_context() {
     ROOT_DIR="$INSTALL_SOURCE_ROOT"
     VENV_DIR="$INSTALL_TEST_ROOT/.venv"
     ETH_IP=192.168.5.100/24
+    FRONTEND_PREFIX="$INSTALL_TEST_ROOT/local"
     APT_UPDATED=false
     TASK_TMP=""
 }
@@ -175,6 +177,46 @@ install() {
         self.assertIn('python3-venv', package_calls[1])
         self.assertNotIn('nginx', package_calls[1])
         self.assertNotIn('SYSTEMCTL ', result.stdout)
+
+    def test_yarn_is_installed_on_path_when_node_has_a_separate_global_prefix(self):
+        # Model /usr/local/bin/node pointing into an /opt Node installation whose
+        # default npm prefix is absent from PATH. All writes stay in this fixture.
+        bin_dir = self.root / 'bin'
+        bin_dir.mkdir()
+        for tool in ('curl', 'python3', 'dpkg', 'tar', 'sha256sum', 'mktemp',
+                     'dirname', 'rm', 'mkdir', 'chmod'):
+            (bin_dir / tool).symlink_to(shutil.which(tool))
+        node_bin = self.root / 'opt' / 'node' / 'bin'
+        node_bin.mkdir(parents=True)
+        node = node_bin / 'node'
+        node.write_text('#!/bin/sh\necho 24\n')
+        node.chmod(0o755)
+        (bin_dir / 'node').symlink_to(node)
+
+        result = self.run_installer(
+            self.select('install_frontend_dependencies'),
+            real_components=('install_frontend_dependencies',), extra_shell=r'''
+export PATH="$INSTALL_TEST_ROOT/bin"
+npm() {
+    echo "NPM $*"
+    local npm_prefix="$INSTALL_TEST_ROOT/opt/node"
+    while [ "$#" -gt 0 ]; do
+        if [ "$1" = --prefix ]; then
+            npm_prefix="$2"
+            shift
+        fi
+        shift
+    done
+    mkdir -p "$npm_prefix/bin"
+    printf '#!/bin/sh\necho 1.22.22\n' > "$npm_prefix/bin/yarn"
+    chmod +x "$npm_prefix/bin/yarn"
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f'NPM install --global --prefix {self.root}/local yarn@1.22.22',
+                      result.stdout)
+        self.assertIn(f'{self.root}/local/bin/yarn install --frozen-lockfile', result.stdout)
+        self.assertTrue((self.root / 'local/bin/yarn').is_file())
 
     def test_ethernet_configuration_can_run_without_any_installations(self):
         result = self.run_installer(
