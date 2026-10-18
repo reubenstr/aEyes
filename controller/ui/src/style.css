@@ -704,6 +704,7 @@ td.numeric {
 }
 
 .settings {
+    margin-top: var(--card-gap);
     display: flex;
     flex-direction: column;
     gap: var(--card-gap)

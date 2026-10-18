@@ -299,7 +299,7 @@ export default function App() {
         </span>
       </header>
       <main className={page === "dashboard" ? "overview-main" : undefined}>
-        {page !== "dashboard" && status}
+        {page === "system" && status}
         {!connected && page !== "dashboard" && (
           <div className="notice warning" role="status">
             Backend connection unavailable. Reconnecting automatically.

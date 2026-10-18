@@ -296,9 +296,12 @@ sudo journalctl -u main.service -u aeyes-monitor.service -f
 sudo nginx -t
 ```
 
-To deploy frontend edits, rerun the installer and select only dashboard
-build/deployment (also select frontend dependencies if packages changed). Restart the
-monitor service after backend code changes. An already-running controller is not
+To deploy frontend edits, run `./deploy.sh` from `controller/ui/` without sudo.
+It builds the UI as your user, then uses sudo to copy `dist/` to `/var/www/aeyes`
+with the same permissions as the installer. Refresh the browser after deployment;
+nginx does not need a restart. If packages changed, run `yarn install --frozen-lockfile`
+first. You can also rerun the installer and select only dashboard build/deployment.
+Restart the monitor service after backend code changes. An already-running controller is not
 restarted by installation; restart it explicitly after updating controller code:
 
 ```bash
