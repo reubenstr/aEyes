@@ -64,11 +64,109 @@ class VideoTests(unittest.TestCase):
     def test_image_before_metadata_does_not_invent_crop(self):
         self.cache.image({'session_id':'one','capture_key':'a','timestamp':10.}, self.image)
         self.cache.render(10.)
+        self.assertIsNone(self.cache.jpeg)
+        self.cache.render(10.21)
         self.assertIsNotNone(self.cache.jpeg)
         self.assertEqual(self.cache.crops,{})
         self.cache.observe('one', snapshot(capture='a')['observation'])
-        self.cache.render(10.2)
-        self.assertIsNotNone(self.cache.crop('one','a',0,now=10.2))
+        self.cache.render(10.32)
+        self.assertIsNotNone(self.cache.crop('one','a',0,now=10.32))
+
+    def test_delayed_detections_keep_boxes_and_crops_while_newer_images_arrive(self):
+        for index in range(20):
+            captured = 10. + index * .11
+            raw = np.full((100,100,3), (20 + index,60,90), np.uint8)
+            self.cache.image({'session_id':'one','capture_key':str(index),
+                              'timestamp':captured}, raw)
+            if index:
+                previous = 10. + (index - 1) * .11
+                self.cache.observe('one', snapshot(now=previous, capture=str(index - 1))['observation'])
+            self.cache.render(captured + .01)
+            if not index:
+                continue
+            self.assertEqual(self.cache.rendered, (str(index - 1), True))
+            self.assertAlmostEqual(self.cache.timestamp, previous)
+            preview = cv2.imdecode(np.frombuffer(self.cache.jpeg,np.uint8), cv2.IMREAD_COLOR)
+            # Interior pixels identify the selected capture; the border must be annotated.
+            np.testing.assert_allclose(preview[50,50], (19 + index,60,90), atol=3)
+            self.assertGreater(int(preview[50,25,0]), 70)
+            self.assertIn('0', self.cache.crop_metadata(captured + .01))
+
+    def test_missing_metadata_has_bounded_wait_without_borrowing_old_boxes(self):
+        self.add('a',10.)
+        for key, captured in [('b',10.11), ('c',10.22)]:
+            self.cache.image({'session_id':'one','capture_key':key,'timestamp':captured}, self.image)
+            self.cache.render(captured)
+            self.assertEqual(self.cache.rendered, ('a', True))
+        self.cache.image({'session_id':'one','capture_key':'d','timestamp':10.33}, self.image)
+        self.cache.render(10.33)
+        self.assertEqual(self.cache.rendered, ('d', False))
+        preview = cv2.imdecode(np.frombuffer(self.cache.jpeg,np.uint8), cv2.IMREAD_COLOR)
+        np.testing.assert_allclose(preview[50,25], self.image[50,25], atol=3)
+        self.assertIsNone(self.cache.crop('one','d',0,now=10.33))
+
+    def test_crop_updates_even_when_its_pair_is_not_rendered(self):
+        self.add('a',10.)
+        self.cache.image({'session_id':'one','capture_key':'b','timestamp':10.25}, self.image)
+        self.cache.image({'session_id':'one','capture_key':'c','timestamp':10.26}, self.image)
+        empty = snapshot(now=10.26, capture='c')['observation']
+        empty['faces'] = []
+        self.cache.observe('one', empty)
+        self.cache.render(10.26)
+        self.assertEqual(self.cache.rendered, ('c', True))
+
+        self.cache.observe('one', snapshot(now=10.25, capture='b')['observation'])
+        self.cache.render(10.28)
+        self.assertEqual(self.cache.rendered, ('c', True))
+        self.assertAlmostEqual(self.cache.timestamp, 10.26)
+        self.assertIsNotNone(self.cache.crop('one','b',0,now=10.28))
+        self.assertIn('capture=b', self.cache.crop_metadata(10.28)['0'])
+        self.cache.render(10.40)
+        self.assertEqual(self.cache.rendered, ('c', True))
+        self.assertIsNone(self.cache.crop('one','b',0,now=10.76))
+        self.assertEqual(self.cache.crop_metadata(10.76), {})
+
+    def test_delayed_pairs_restore_annotations_after_raw_video_fallback(self):
+        self.add('a',10.)
+        for key, captured in [('b',10.11), ('c',10.22), ('d',10.33)]:
+            self.cache.image({'session_id':'one','capture_key':key,'timestamp':captured}, self.image)
+            self.cache.render(captured)
+        self.assertEqual(self.cache.rendered, ('d', False))
+        self.cache.render(10.44)
+        self.assertEqual(self.cache.rendered, ('d', False))
+
+        # C is a new completed pair, even though raw D was already displayed.
+        self.cache.observe('one', snapshot(now=10.22, capture='c')['observation'])
+        self.cache.render(10.45)
+        self.assertEqual(self.cache.rendered, ('c', True))
+        self.assertIsNotNone(self.cache.crop('one','c',0,now=10.45))
+        # Still older results cannot replay pairs behind completed C.
+        self.cache.observe('one', snapshot(now=10.11, capture='b')['observation'])
+        self.cache.render(10.56)
+        self.assertEqual(self.cache.rendered, ('c', True))
+        self.cache.image({'session_id':'one','capture_key':'e','timestamp':10.44}, self.image)
+        self.cache.observe('one', snapshot(now=10.33, capture='d')['observation'])
+        self.cache.render(10.57)
+        self.assertEqual(self.cache.rendered, ('d', True))
+
+    def test_empty_detection_result_clears_boxes_without_waiting(self):
+        self.add('a',10.)
+        empty = snapshot(now=10.21, capture='b')['observation']
+        empty.update(faces=[], detections=[])
+        self.cache.observe('one', empty)
+        self.cache.image({'session_id':'one','capture_key':'b','timestamp':10.21}, self.image)
+        self.cache.render(10.21)
+        self.assertEqual(self.cache.rendered, ('b', True))
+        preview = cv2.imdecode(np.frombuffer(self.cache.jpeg,np.uint8), cv2.IMREAD_COLOR)
+        np.testing.assert_allclose(preview[50,25], self.image[50,25], atol=3)
+        self.assertIsNone(self.cache.crop('one','b',0,now=10.21))
+
+    def test_stale_pair_cannot_create_a_fresh_crop(self):
+        self.cache.image({'session_id':'one','capture_key':'a','timestamp':10.}, self.image)
+        self.cache.observe('one', snapshot(capture='a')['observation'])
+        self.cache.render(10.6)
+        self.assertEqual(self.cache.crop_metadata(10.6), {})
+        self.assertIsNone(self.cache.crop('one','a',0,now=10.6))
 
     def test_reused_sequence_cannot_pair_with_old_timestamp(self):
         self.add('1-10000000',10.)
@@ -85,6 +183,12 @@ class VideoTests(unittest.TestCase):
         self.cache.set_session('two')
         self.assertIsNone(self.cache.jpeg)
         self.assertEqual(self.cache.latest_crops,{})
+        restarted = snapshot(now=1., session='two', capture='restart')
+        self.cache.observe('two', restarted['observation'])
+        self.cache.image({'session_id':'two','capture_key':'restart','timestamp':1.}, self.image)
+        self.cache.render(1.)
+        self.assertEqual(self.cache.rendered, ('restart', True))
+        self.assertIsNotNone(self.cache.crop('two','restart',0,now=1.))
 
     def test_unassigned_or_unmatched_boxes_never_produce_crops(self):
         state = snapshot()
