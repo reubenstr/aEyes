@@ -4,7 +4,7 @@ import argparse
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from time import sleep
+from time import monotonic, sleep
 
 import depthai as dai
 from depthai_nodes.node import ParsingNeuralNetwork
@@ -47,6 +47,14 @@ class DetectedFace:
 
     confidence: float
     xyz_m: tuple[float, float, float] | None
+    bbox: tuple[float, float, float, float] | None = None
+
+
+@dataclass(frozen=True)
+class DetectedFrame:
+    faces: list[DetectedFace]
+    timestamp: float  # Capture time translated to Python's monotonic clock.
+    sequence: int
 
 
 class Detector:
@@ -153,7 +161,7 @@ class Detector:
         if not self.pipeline.isRunning():
             self.pipeline.start()
 
-    def poll_faces(self) -> list[DetectedFace] | None:
+    def poll_frame(self) -> DetectedFrame | None:
         """Poll one detector frame.
 
         Returns None until a new spatial detection message is available. XYZ
@@ -176,9 +184,22 @@ class Detector:
             xyz = self._spatial_detection_xyz_m(face)
             if xyz is not None:
                 self.latest_faces_xyz_m.append(xyz)
-            faces.append(DetectedFace(confidence=face.confidence, xyz_m=xyz))
+            raw_bbox = (face.xmin, face.ymin, face.xmax, face.ymax)
+            bbox = None
+            if all(math.isfinite(v) for v in raw_bbox):
+                candidate = tuple(max(0., min(1., float(v))) for v in raw_bbox)
+                if candidate[0] < candidate[2] and candidate[1] < candidate[3]:
+                    bbox = candidate
+            faces.append(DetectedFace(confidence=face.confidence, xyz_m=xyz, bbox=bbox))
 
-        return faces
+        # getTimestamp() is relative to dai.Clock.now(), not necessarily Python's
+        # clock epoch. Preserve capture age while translating between the clocks.
+        age = max(0., (dai.Clock.now() - detections_msg.getTimestamp()).total_seconds())
+        return DetectedFrame(faces, monotonic() - age, detections_msg.getSequenceNum())
+
+    def poll_faces(self) -> list[DetectedFace] | None:
+        frame = self.poll_frame()
+        return None if frame is None else frame.faces
 
     def poll_face_xyz_m(self) -> list[tuple[float, float, float]]:
         """Poll valid face positions in the DepthAI camera frame."""
@@ -234,7 +255,8 @@ class Detector:
         coords = face.spatialCoordinates
         x, y, z = coords.x, coords.y, coords.z
 
-        if any(not math.isfinite(v) for v in (x, y, z)) or z <= 0:
+        if (any(not math.isfinite(v) for v in (x, y, z))
+                or not DEPTH_LOWER_THRESHOLD_MM <= z <= DEPTH_UPPER_THRESHOLD_MM):
             return None
 
         return (x / 1000.0, y / 1000.0, z / 1000.0)

@@ -1,26 +1,32 @@
 from __future__ import annotations
 
 import math
-import numpy as np
-from scipy.optimize import linear_sum_assignment
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
+
+import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 from data_types import Detection, FaceId, Position3D, TrackedFace, TrackedFaces
 from kalman_filter_3d import KalmanFilter3D
 from parameters import params as _params
 
 
-# ---------------------------------------------------------------------------
-# Track
-# ---------------------------------------------------------------------------
-
 class TrackStatus:
     TENTATIVE = "tentative"
     CONFIRMED = "confirmed"
     REACQUIRING = "reacquiring"
-    LOST      = "lost"
+    LOST = "lost"
+
+
+def bbox_iou(a, b) -> float:
+    if a is None or b is None:
+        return 0.0
+    width = max(0., min(a[2], b[2]) - max(a[0], b[0]))
+    height = max(0., min(a[3], b[3]) - max(a[1], b[1]))
+    intersection = width * height
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - intersection
+    return intersection / union if union > 0 else 0.0
 
 
 @dataclass
@@ -28,414 +34,298 @@ class Track:
     id: FaceId
     kalman: KalmanFilter3D
     status: str = TrackStatus.TENTATIVE
-
-    # Lifecycle counters
-    hits: int = 1                  # Total matched frames
-    consecutive_hits: int = 1      # Consecutive hits since last miss
-    missing_frames: int = 0        # Consecutive unmatched frames
-
-    # Smoothed output position (EMA)
-    smooth_x: float = 0.0
-    smooth_y: float = 0.0
-    smooth_z: float = 0.0
-    ema_alpha: float = 0.4         # 0=very smooth, 1=no smoothing
-
-    # Optional: face embedding for re-ID
-    embedding: Optional[np.ndarray] = None
-
-    # Candidate state used while proving that a reacquired detection is stable.
+    hits: int = 1
+    consecutive_hits: int = 1
+    missing_frames: int = 0  # Diagnostic only; expiration uses elapsed seconds.
+    ema_alpha: float = 0.4
+    embedding: np.ndarray | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    confidence: float = 1.0
+    last_seen: float = 0.0
+    last_depth_seen: float = 0.0
+    lost_at: float | None = None
     reacquire_kalman: KalmanFilter3D | None = None
     reacquire_hits: int = 0
-    reacquire_embedding: Optional[np.ndarray] = None
     reacquire_from_lost: bool = False
-    reacquire_lost_age: int = 0
-
-    # History of raw positions (for debugging / visualisation)
-    position_history: deque = field(default_factory=lambda: deque(maxlen=300))
-
-    # Static-face detection
     is_static: bool = False
-    speed_window: deque = field(default_factory=lambda: deque(maxlen=_params.tracker.static_window), repr=False)
+    speed_window: deque = field(default_factory=deque, repr=False)
+    static_since: float | None = None
+    position_history: deque = field(default_factory=lambda: deque(maxlen=300), repr=False)
 
     def __post_init__(self):
-        pos = self.kalman.position
-        self.smooth_x = pos.x
-        self.smooth_y = pos.y
-        self.smooth_z = pos.z
+        self._smooth = np.array([self.kalman.position.x, self.kalman.position.y, self.kalman.position.z])
 
-    def predict(self):
-        if self.status == TrackStatus.REACQUIRING and self.reacquire_kalman is not None:
-            self.reacquire_kalman.predict()
-            return
-        self.kalman.predict()
-
-    def update(self, position: Position3D, embedding: Optional[np.ndarray] = None):
-        self.kalman.update(position)
-        self.hits += 1
-        self.consecutive_hits += 1
-        self.missing_frames = 0
-
-        self._update_embedding(embedding)
-
-        # EMA smoothing on output position
-        kp = self.kalman.position
-        self.smooth_x = self.ema_alpha * kp.x + (1 - self.ema_alpha) * self.smooth_x
-        self.smooth_y = self.ema_alpha * kp.y + (1 - self.ema_alpha) * self.smooth_y
-        self.smooth_z = self.ema_alpha * kp.z + (1 - self.ema_alpha) * self.smooth_z
-
-        self.position_history.append(position)
-
-        # Update static classification using rolling max velocity.
-        # Velocity is in m/frame; convert threshold to m/frame at runtime so
-        # the m/s constant remains valid across different publish frequencies.
-        speed = float(np.linalg.norm(self.kalman.velocity))
-        self.speed_window.append(speed)
-        if len(self.speed_window) == _params.tracker.static_window:
-            per_frame_thresh = _params.tracker.static_speed_thresh_mps / _params.system.refresh_rate_hz
-            self.is_static = max(self.speed_window) < per_frame_thresh
-
-    def start_reacquire(
-        self,
-        position: Position3D,
-        embedding: Optional[np.ndarray] = None,
-        *,
-        from_lost: bool = False,
-        lost_age: int = 0,
-    ):
-        self.status = TrackStatus.REACQUIRING
-        self.reacquire_kalman = KalmanFilter3D(position)
-        self.reacquire_hits = 1
-        self.reacquire_embedding = embedding.copy() if embedding is not None else None
-        self.reacquire_from_lost = from_lost
-        self.reacquire_lost_age = lost_age
-
-    def update_reacquire(self, position: Position3D, embedding: Optional[np.ndarray] = None):
-        if self.reacquire_kalman is None:
-            self.start_reacquire(position, embedding)
-            return
-
-        self.reacquire_kalman.update(position)
-        self.reacquire_hits += 1
-        if embedding is not None:
-            self.reacquire_embedding = embedding.copy()
-
-    def accept_reacquire(self):
-        if self.reacquire_kalman is None:
-            return
-
-        self.kalman = self.reacquire_kalman
-        self.hits += self.reacquire_hits
-        self.consecutive_hits = self.reacquire_hits
-        self.missing_frames = 0
-        self.status = TrackStatus.CONFIRMED
-
-        pos = self.kalman.position
-        self.smooth_x = pos.x
-        self.smooth_y = pos.y
-        self.smooth_z = pos.z
-        self.position_history.append(pos)
-        self._update_embedding(self.reacquire_embedding)
-
-        self.reacquire_kalman = None
-        self.reacquire_hits = 0
-        self.reacquire_embedding = None
-        self.reacquire_from_lost = False
-        self.reacquire_lost_age = 0
-
-    def discard_reacquire(self) -> tuple[bool, int]:
-        from_lost = self.reacquire_from_lost
-        lost_age = self.reacquire_lost_age + self.reacquire_hits
-
-        self.reacquire_kalman = None
-        self.reacquire_hits = 0
-        self.reacquire_embedding = None
-        self.reacquire_from_lost = False
-        self.reacquire_lost_age = 0
-        self.status = TrackStatus.LOST if from_lost else TrackStatus.CONFIRMED
-
-        return from_lost, lost_age
-
-    def _update_embedding(self, embedding: Optional[np.ndarray] = None):
-        if embedding is None:
-            return
-
-        if self.embedding is None:
-            self.embedding = embedding.copy()
-            return
-
-        keep = _params.tracker.embedding_ema_keep
-        self.embedding = keep * self.embedding + (1 - keep) * embedding
-        norm = np.linalg.norm(self.embedding)
-        if norm > 0:
-            self.embedding /= norm
-
-    def mark_missing(self):
-        # Keep the Kalman filter predicting forward even when there is no
-        # detection. This extrapolates the face's position using its last
-        # known velocity, so the predicted position stays close to where
-        # the face actually is — making it much easier to re-link when the
-        # detection returns after a brief occlusion or dropout.
-        self.kalman.predict()
-        self.missing_frames += 1
-        self.consecutive_hits = 0
+    @property
+    def filter(self) -> KalmanFilter3D:
+        return self.reacquire_kalman if self.reacquire_kalman is not None else self.kalman
 
     @property
     def predicted_position(self) -> Position3D:
-        if self.status == TrackStatus.REACQUIRING and self.reacquire_kalman is not None:
-            return self.reacquire_kalman.position
-        return self.kalman.position
+        return self.filter.position
 
     @property
     def smoothed_position(self) -> Position3D:
-        return Position3D(self.smooth_x, self.smooth_y, self.smooth_z)
+        return Position3D(*self._smooth)
 
+    def output_position(self, timestamp: float) -> Position3D:
+        age = min(_params.tracker.coast_time_s, max(0., timestamp - self.last_depth_seen))
+        return Position3D(*(self._smooth + self.kalman.velocity * age))
 
-# ---------------------------------------------------------------------------
-# FaceTracker
-# ---------------------------------------------------------------------------
+    def predict(self, dt: float):
+        self.kalman.predict(dt)
+        if self.reacquire_kalman is not None:
+            self.reacquire_kalman.predict(dt)
+
+    def reset_static(self):
+        self.speed_window.clear()
+        self.static_since = None
+        self.is_static = False
+
+    def mark_missing(self):
+        # Prediction belongs to the frame update, exactly once per filter.
+        self.missing_frames += 1
+        self.consecutive_hits = 0
+        self.reset_static()
+
+    def _update_embedding(self, embedding):
+        if embedding is None:
+            return
+        incoming = np.asarray(embedding, dtype=float)
+        norm = np.linalg.norm(incoming)
+        if not np.isfinite(incoming).all() or norm <= 0:
+            return
+        incoming = incoming / norm
+        if self.embedding is None:
+            self.embedding = incoming.copy()
+        else:
+            keep = _params.tracker.embedding_ema_keep
+            self.embedding = keep * self.embedding + (1 - keep) * incoming
+            self.embedding /= max(np.linalg.norm(self.embedding), 1e-8)
+
+    def observe(self, detection: Detection, timestamp: float):
+        self.bbox = detection.bbox
+        self.confidence = detection.confidence
+        self.last_seen = timestamp
+        self.missing_frames = 0
+        if detection.position is None or detection.depth_quality <= 0:
+            self.reset_static()
+            return
+        previous = self.output_position(timestamp)
+        dt = max(0., timestamp - self.last_depth_seen)
+        self.filter.update(detection.position, detection.confidence * detection.depth_quality)
+        self.hits += 1
+        self.consecutive_hits += 1
+        self._update_embedding(detection.embedding)
+        if self.status == TrackStatus.REACQUIRING:
+            self.reacquire_hits += 1
+        else:
+            alpha = 1 - (1 - self.ema_alpha) ** (dt * _params.system.refresh_rate_hz)
+            current = self.kalman.state[:3]
+            self._smooth = alpha * current + (1 - alpha) * np.array([previous.x, previous.y, previous.z])
+        self.last_depth_seen = timestamp
+        self.position_history.append(detection.position)
+        self.speed_window.append((timestamp, float(np.linalg.norm(self.filter.velocity))))
+        if self.static_since is None:
+            self.static_since = timestamp
+        window_s = _params.tracker.static_window / _params.system.refresh_rate_hz
+        while self.speed_window and self.speed_window[0][0] < timestamp - window_s:
+            self.speed_window.popleft()
+        self.is_static = (timestamp - self.static_since >= window_s
+                          and max(speed for _, speed in self.speed_window) < _params.tracker.static_speed_thresh_mps)
+
+    def start_reacquire(self, detection: Detection, timestamp: float):
+        self.status = TrackStatus.REACQUIRING
+        self.reacquire_from_lost = True
+        self.reacquire_kalman = KalmanFilter3D(detection.position)
+        self.reacquire_hits = 1
+        self.consecutive_hits = 1
+        self.missing_frames = 0
+        self.last_seen = self.last_depth_seen = timestamp
+        self.bbox = detection.bbox
+        self.confidence = detection.confidence
+        self._update_embedding(detection.embedding)
+        self.reset_static()
+
+    def accept_reacquire(self):
+        self.kalman = self.reacquire_kalman
+        self.reacquire_kalman = None
+        self.reacquire_from_lost = False
+        self.reacquire_hits = 0
+        self.lost_at = None
+        self.status = TrackStatus.CONFIRMED
+        self._smooth = self.kalman.state[:3].copy()
+
 
 class FaceTracker:
     def __init__(self):
         p = _params.tracker
-        # Matching
-        self.base_max_distance  = p.base_max_distance
-        self.depth_scale_factor = p.depth_scale_factor
-        self.embedding_weight   = p.embedding_weight
-        # Track lifecycle
-        self.min_hits_to_confirm = p.min_hits_to_confirm
-        self.min_hits_to_confirm_reacquiring_tracks = (
-            p.min_hits_to_confirm_reacquiring_tracks
-        )
-        self.max_missing_confirmed = p.max_missing_confirmed
-        self.max_missing_tentative = p.max_missing_tentative
-        # Re-identification
-        self.reid_window_frames = p.reid_window_frames
-        self.reid_max_distance  = p.reid_max_distance
-        # Smoothing
-        self.ema_alpha = p.ema_alpha
-
+        for name in ("base_max_distance", "depth_scale_factor", "embedding_weight", "min_hits_to_confirm",
+                     "min_hits_to_confirm_reacquiring_tracks", "max_missing_confirmed", "max_missing_tentative",
+                     "reid_window_frames", "reid_max_distance", "ema_alpha"):
+            setattr(self, name, getattr(p, name))
         self.tracks: dict[FaceId, Track] = {}
-        self.lost_tracks: list[tuple[int, Track]] = []  # (frames_since_lost, track)
-        self._next_id: FaceId = 0
+        self.lost_tracks: list[tuple[float, Track]] = []  # (lost timestamp, track)
+        self._next_id = 0
+        self._timestamp: float | None = None
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _missing_limit(self, track: Track) -> float:
+        frames = self.max_missing_tentative if track.status == TrackStatus.TENTATIVE else self.max_missing_confirmed
+        return frames / _params.system.refresh_rate_hz
 
-    def update(self, detections: list[Detection]) -> TrackedFaces:
+    def update(self, detections: list[Detection] | None, timestamp: float | None = None) -> TrackedFaces:
+        """Update from one capture, or project output without consuming a frame for None.
+
+        Explicit timestamps are monotonic capture seconds. Omitted timestamps advance
+        one nominal period for deterministic synthetic callers. Late/duplicate captures
+        are ignored. Publication must use get_output() so it cannot advance filter time
+        ahead of a subsequently received camera capture.
         """
-        Process one frame of detections.
-
-        Returns TrackedFaces for confirmed tracks and active tracks that are
-        holding their last confirmed output while reacquiring.
-        """
-        # 1. Predict all active tracks forward one step
+        if timestamp is None:
+            timestamp = (self._timestamp or 0.) + (0. if detections is None else 1 / _params.system.refresh_rate_hz)
+        if not math.isfinite(timestamp):
+            raise ValueError("Capture timestamp must be finite")
+        if detections is None:
+            return self.get_output(timestamp)
+        if self._timestamp is not None and timestamp <= self._timestamp:
+            return self.get_output(self._timestamp)
+        dt = 0. if self._timestamp is None else timestamp - self._timestamp
+        self._timestamp = timestamp
         for track in self.tracks.values():
-            track.predict()
+            track.predict(dt)
+        for _, track in self.lost_tracks:
+            track.predict(dt)
 
-        # 2. Match detections → active tracks (Hungarian)
-        matched, unmatched_dets, unmatched_tracks = self._match(
-            detections, list(self.tracks.values()),
-            max_dist=self._adaptive_max_distance(detections)
-        )
-
-        # 3. Update matched tracks
-        for det_idx, track_id in matched:
-            det = detections[det_idx]
-            track = self.tracks[track_id]
-
-            if track.status == TrackStatus.REACQUIRING:
-                track.update_reacquire(det.position, det.embedding)
-                self._confirm_reacquire_if_ready(track)
-            elif track.status == TrackStatus.CONFIRMED and track.missing_frames > 0:
-                track.start_reacquire(det.position, det.embedding)
-                self._confirm_reacquire_if_ready(track)
-            else:
-                track.update(det.position, det.embedding)
-                if (track.consecutive_hits >= self.min_hits_to_confirm
-                        and track.status == TrackStatus.TENTATIVE):
-                    track.status = TrackStatus.CONFIRMED
-
-        # 4. Age unmatched active tracks
-        for track_id in unmatched_tracks:
-            track = self.tracks[track_id]
-
-            if track.status == TrackStatus.REACQUIRING:
-                from_lost, lost_age = track.discard_reacquire()
-                if from_lost:
-                    del self.tracks[track_id]
-                    if lost_age <= self.reid_window_frames:
-                        self.lost_tracks.append((lost_age, track))
-                    continue
-
+        # Expire before association so a long camera outage requires real re-ID.
+        for tid, track in list(self.tracks.items()):
+            if timestamp - track.last_seen > self._missing_limit(track) + 1e-9:
+                self._retire(tid, track.last_seen + self._missing_limit(track))
+        self._prune_lost(timestamp)
+        detections = [d for d in detections if self._valid_detection(d)]
+        matched, unmatched_dets, unmatched_tracks = self._match(detections, list(self.tracks.values()))
+        for index, tid in matched:
+            track = self.tracks[tid]
+            track.observe(detections[index], timestamp)
+            if track.status == TrackStatus.TENTATIVE and track.consecutive_hits >= self.min_hits_to_confirm:
+                track.status = TrackStatus.CONFIRMED
+            elif (track.status == TrackStatus.REACQUIRING
+                  and track.reacquire_hits >= self.min_hits_to_confirm_reacquiring_tracks):
+                track.accept_reacquire()
+        for tid in unmatched_tracks:
+            track = self.tracks[tid]
             track.mark_missing()
-            max_miss = (self.max_missing_confirmed
-                        if track.status == TrackStatus.CONFIRMED
-                        else self.max_missing_tentative)
-            if track.missing_frames > max_miss:
-                track.status = TrackStatus.LOST
-                self.lost_tracks.append((0, track))
-                del self.tracks[track_id]
+            if track.status == TrackStatus.REACQUIRING:
+                self._retire(tid, track.lost_at)
 
-        # 5. Try to re-identify remaining unmatched detections against lost tracks
-        still_unmatched = []
-        for det_idx in unmatched_dets:
-            det = detections[det_idx]
-            reid_match = self._try_reid(det)
-            if reid_match is not None:
-                lost_age, reid_track = reid_match
-                reid_track.start_reacquire(
-                    det.position,
-                    det.embedding,
-                    from_lost=True,
-                    lost_age=lost_age,
-                )
-                self._confirm_reacquire_if_ready(reid_track)
-                self.tracks[reid_track.id] = reid_track
-                # Remove from lost list
-                self.lost_tracks = [
-                    (age, t) for age, t in self.lost_tracks if t.id != reid_track.id
-                ]
-            else:
-                still_unmatched.append(det_idx)
+        # Re-identification is also a joint assignment, independent of detection order.
+        candidates = [detections[i] for i in unmatched_dets]
+        lost = [track for _, track in self.lost_tracks]
+        reidentified, remaining, _ = self._match(candidates, lost, max_dist=self.reid_max_distance, reid=True)
+        for index, tid in reidentified:
+            track = next(t for t in lost if t.id == tid)
+            track.start_reacquire(candidates[index], timestamp)
+            if self.min_hits_to_confirm_reacquiring_tracks <= 1:
+                track.accept_reacquire()
+            self.tracks[tid] = track
+        restored = {tid for _, tid in reidentified}
+        self.lost_tracks = [(at, t) for at, t in self.lost_tracks if t.id not in restored]
+        for index in remaining:
+            if candidates[index].position is not None and candidates[index].depth_quality > 0:
+                self._spawn_track(candidates[index], timestamp)
+        self._prune_lost(timestamp)
+        return self.get_output(timestamp)
 
-        # 6. Spawn new tentative tracks for truly unmatched detections
-        for det_idx in still_unmatched:
-            self._spawn_track(detections[det_idx])
-
-        # 7. Age lost tracks, discard old ones
-        self.lost_tracks = [
-            (age + 1, t) for age, t in self.lost_tracks
-            if age + 1 <= self.reid_window_frames
-        ]
-
-        # 8. Return TrackedFace (position + is_static) for public tracks only
-        return {
-            tid: TrackedFace(position=track.smoothed_position, is_static=track.is_static)
-            for tid, track in self.tracks.items()
-            if (
-                track.status == TrackStatus.CONFIRMED
-                or (
-                    track.status == TrackStatus.REACQUIRING
-                    and not track.reacquire_from_lost
-                )
-            )
-        }
+    def get_output(self, timestamp: float | None = None) -> TrackedFaces:
+        timestamp = self._timestamp if timestamp is None else timestamp
+        if timestamp is None:
+            return {}
+        return {tid: TrackedFace(track.output_position(timestamp), track.is_static)
+                for tid, track in self.tracks.items()
+                if track.status == TrackStatus.CONFIRMED
+                and timestamp - track.last_seen <= self._missing_limit(track) + 1e-9}
 
     def get_all_tracks(self) -> dict[FaceId, Track]:
-        """Return all active tracks."""
         return self.tracks
 
-    # ------------------------------------------------------------------
-    # Matching
-    # ------------------------------------------------------------------
+    def _retire(self, tid: int, lost_at: float):
+        track = self.tracks.pop(tid)
+        if track.status == TrackStatus.TENTATIVE:
+            return
+        track.reacquire_kalman = None
+        track.reacquire_from_lost = False
+        track.status = TrackStatus.LOST
+        track.lost_at = lost_at
+        track.reset_static()
+        self.lost_tracks.append((lost_at, track))
 
-    def _match(
-        self,
-        detections: list[Detection],
-        tracks: list[Track],
-        max_dist: float,
-    ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
-        """
-        Hungarian matching between detections and tracks.
-        Returns (matched pairs, unmatched det indices, unmatched track ids).
-        """
+    def _prune_lost(self, timestamp):
+        self.lost_tracks = [(at, t) for at, t in self.lost_tracks
+                            if timestamp - at <= self.reid_window_frames / _params.system.refresh_rate_hz + 1e-9]
+
+    @staticmethod
+    def _valid_detection(det: Detection) -> bool:
+        if not (math.isfinite(det.confidence) and _params.tracker.min_detection_confidence <= det.confidence <= 1
+                and math.isfinite(det.depth_quality) and 0 <= det.depth_quality <= 1):
+            return False
+        if det.position is not None and not all(math.isfinite(v) for v in (det.position.x, det.position.y, det.position.z)):
+            return False
+        if det.bbox is not None:
+            if (len(det.bbox) != 4 or not all(math.isfinite(v) and 0 <= v <= 1 for v in det.bbox)
+                    or det.bbox[0] >= det.bbox[2] or det.bbox[1] >= det.bbox[3]):
+                return False
+        return det.position is not None or det.bbox is not None
+
+    def _adaptive_max_distance(self, position: Position3D) -> float:
+        return self.base_max_distance + self.depth_scale_factor * max(0., position.x - 1.)
+
+    def _cost(self, det: Detection, track: Track, max_dist: float | None = None, reid: bool = False) -> float:
+        overlap = bbox_iou(det.bbox, track.bbox)
+        if det.position is None or det.depth_quality <= 0:
+            if (reid or track.status != TrackStatus.CONFIRMED
+                    or self._timestamp - track.last_depth_seen > _params.tracker.depth_grace_s
+                    or overlap < _params.tracker.min_bbox_iou):
+                return math.inf
+            return 1 - overlap
+        p = track.predicted_position
+        distance = math.dist((det.position.x, det.position.y, det.position.z), (p.x, p.y, p.z))
+        gate = max_dist if max_dist is not None else self._adaptive_max_distance(p)
+        mahalanobis = track.filter.distance_squared(det.position, det.confidence * det.depth_quality)
+        if distance > gate or mahalanobis > _params.tracker.mahalanobis_gate:
+            return math.inf
+        cost = 0.5 * distance / gate + 0.5 * math.sqrt(max(0., mahalanobis) / _params.tracker.mahalanobis_gate)
+        if det.bbox is not None and track.bbox is not None:
+            cost = 0.85 * cost + 0.15 * (1 - overlap)
+        if det.embedding is not None and track.embedding is not None and self.embedding_weight > 0:
+            incoming = np.asarray(det.embedding)
+            if incoming.shape == track.embedding.shape and np.isfinite(incoming).all():
+                sim = float(np.dot(incoming, track.embedding) / (np.linalg.norm(incoming) * np.linalg.norm(track.embedding) + 1e-8))
+                cost = (1 - self.embedding_weight) * cost + self.embedding_weight * (1 - np.clip(sim, -1, 1)) / 2
+        return float(cost)
+
+    def _match(self, detections: list[Detection], tracks: list[Track], max_dist: float | None = None,
+               reid: bool = False) -> tuple[list[tuple[int, int]], list[int], list[int]]:
         if not detections or not tracks:
             return [], list(range(len(detections))), [t.id for t in tracks]
-
-        n_det = len(detections)
-        n_trk = len(tracks)
-
-        # Build cost matrix
-        cost = np.full((n_det, n_trk), fill_value=1e6)
-        for i, det in enumerate(detections):
+        # Every row has dummy columns. A penalty above all valid costs combined
+        # makes cardinality primary, then minimizes uncertainty/appearance cost.
+        penalty = len(detections) + len(tracks) + 1.
+        cost = np.full((len(detections), len(tracks) + len(detections)), penalty)
+        for i, detection in enumerate(detections):
             for j, track in enumerate(tracks):
-                cost[i, j] = self._cost(det, track)
+                cost[i, j] = self._cost(detection, track, max_dist, reid)
+        rows, columns = linear_sum_assignment(cost)
+        matched = [(int(i), tracks[j].id) for i, j in zip(rows, columns) if j < len(tracks)]
+        used_detections = {i for i, _ in matched}
+        used_tracks = {tid for _, tid in matched}
+        return (matched, [i for i in range(len(detections)) if i not in used_detections],
+                [t.id for t in tracks if t.id not in used_tracks])
 
-        # Solve assignment
-        row_ind, col_ind = linear_sum_assignment(cost)
-
-        matched = []
-        unmatched_dets = set(range(n_det))
-        unmatched_tracks = {t.id for t in tracks}
-
-        for r, c in zip(row_ind, col_ind):
-            if cost[r, c] > max_dist:
-                continue  # Too far — treat as unmatched
-            matched.append((r, tracks[c].id))
-            unmatched_dets.discard(r)
-            unmatched_tracks.discard(tracks[c].id)
-
-        return matched, list(unmatched_dets), list(unmatched_tracks)
-
-    def _cost(self, det: Detection, track: Track) -> float:
-        """
-        Combined cost: weighted sum of positional distance and
-        embedding dissimilarity (if both are available).
-        """
-        p = track.predicted_position
-        pos_dist = math.sqrt(
-            (det.position.x - p.x) ** 2 +
-            (det.position.y - p.y) ** 2 +
-            (det.position.z - p.z) ** 2
-        )
-
-        if (det.embedding is not None
-                and track.embedding is not None
-                and self.embedding_weight > 0):
-            # Cosine distance in [0, 1]
-            sim = float(np.dot(det.embedding, track.embedding) /
-                        (np.linalg.norm(det.embedding) * np.linalg.norm(track.embedding) + 1e-8))
-            emb_dist = (1.0 - sim) / 2.0
-            w = self.embedding_weight
-            return (1 - w) * pos_dist + w * emb_dist
-
-        return pos_dist
-
-    def _adaptive_max_distance(self, detections: list[Detection]) -> float:
-        """Widen the matching gate for distant faces (depth-adaptive)."""
-        if not detections:
-            return self.base_max_distance
-        avg_z = sum(d.position.z for d in detections) / len(detections)
-        return self.base_max_distance + self.depth_scale_factor * max(0.0, avg_z - 1.0)
-
-    # ------------------------------------------------------------------
-    # Re-identification
-    # ------------------------------------------------------------------
-
-    def _try_reid(self, det: Detection) -> Optional[tuple[int, Track]]:
-        """
-        Try to match a new detection to a recently lost track.
-        Prefers embedding similarity when available, falls back to position.
-        """
-        best_match = None
-        best_cost = self.reid_max_distance
-
-        for age, track in self.lost_tracks:
-            c = self._cost(det, track)
-            if c < best_cost:
-                best_cost = c
-                best_match = (age, track)
-
-        return best_match
-
-    def _confirm_reacquire_if_ready(self, track: Track) -> None:
-        if (track.status == TrackStatus.REACQUIRING
-                and track.reacquire_hits >= self.min_hits_to_confirm_reacquiring_tracks):
-            track.accept_reacquire()
-
-    # ------------------------------------------------------------------
-    # Track management
-    # ------------------------------------------------------------------
-
-    def _spawn_track(self, det: Detection):
-        tid = self._next_id
+    def _spawn_track(self, detection: Detection, timestamp: float | None = None):
+        timestamp = (self._timestamp or 0.) if timestamp is None else timestamp
+        track = Track(self._next_id, KalmanFilter3D(detection.position), ema_alpha=self.ema_alpha,
+                      bbox=detection.bbox, confidence=detection.confidence,
+                      last_seen=timestamp, last_depth_seen=timestamp)
+        track._update_embedding(detection.embedding)
+        if self.min_hits_to_confirm <= 1:
+            track.status = TrackStatus.CONFIRMED
+        self.tracks[track.id] = track
         self._next_id += 1
-        kf = KalmanFilter3D(det.position)
-        track = Track(
-            id=tid,
-            kalman=kf,
-            ema_alpha=self.ema_alpha,
-            embedding=det.embedding.copy() if det.embedding is not None else None,
-        )
-        self.tracks[tid] = track

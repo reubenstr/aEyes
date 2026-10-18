@@ -21,16 +21,17 @@ publisher:
 tracker:
   base_max_distance: 0.4     # Match gate radius at 1m depth [m].  range: 0.1–1.0
   depth_scale_factor: 0.15   # Gate growth per meter of depth [m/m].  range: 0.0–0.5
-  embedding_weight: 0.3      # 0=position-only matching, 1=embedding-only.  range: 0–1
+  embedding_weight: 0.3      # Appearance ranking weight after independent spatial gates [0-1].
 
-  # Track lifecycle (all in frames)
+  # Confirmation counts actual observations. Missing/lost windows below are
+  # nominal frames converted to seconds using system.refresh_rate_hz.
   min_hits_to_confirm: 30                      # Frames before tentative -> confirmed.  range: 1-60
-  min_hits_to_confirm_reacquiring_tracks: 30   # Frames before reacquiring -> confirmed.  range: 1-60
-  max_missing_confirmed: 30                    # Frames a confirmed track survives without detection.  range: 5-30
-  max_missing_tentative: 5                     # Frames a tentative track survives without detection.  range: 1-5
+  min_hits_to_confirm_reacquiring_tracks: 3    # Only LOST tracks need reconfirmation.
+  max_missing_confirmed: 30                    # Missing grace = value / refresh_rate_hz seconds.
+  max_missing_tentative: 5                     # Missing grace = value / refresh_rate_hz seconds.
 
   # Re-identification
-  reid_window_frames: 45     # Frames a lost track is retained for re-ID.  range: 10–60
+  reid_window_frames: 45     # Lost retention = value / refresh_rate_hz seconds.
   reid_max_distance: 1.0     # Spatial search radius for re-ID matching [m].  range: 0.5–2.0
 
   # Output smoothing
@@ -39,18 +40,23 @@ tracker:
                              # New embedding weight = 1 - embedding_ema_keep.
 
   # Static-face detection — faces whose rolling-max Kalman speed stays below
-  # static_speed_thresh_mps for static_window consecutive matched frames are
+  # static_speed_thresh_mps for static_window / refresh_rate_hz seconds are
   # classified as static and excluded from eye assignment.
-  static_window: 1000            # Rolling velocity window length [frames].  range: 30–1000
+  static_window: 1000            # Nominal frames defining the rolling time window.
   static_speed_thresh_mps: 0.15  # Max speed to be considered static [m/s].  range: 0.01–1.0
+  mahalanobis_gate: 11.345       # Squared 3D innovation gate (99% chi-square).
+  min_detection_confidence: 0.5
+  min_bbox_iou: 0.2             # Image-only association during a brief depth failure.
+  depth_grace_s: 0.5            # Maximum time to associate without a valid depth sample.
+  coast_time_s: 0.25            # Maximum public extrapolation beyond the last valid XYZ.
 
 # ---------------------------------------------------------------------------
 # Kalman filter (3D constant-velocity)
 # ---------------------------------------------------------------------------
 kalman:
-  process_noise: 0.1         # Process noise (q). Higher = tracks react faster but noisier.
-  measurement_noise_xy: 0.05 # X/Y position measurement noise [m]. Lower = trust sensor more.
-  measurement_noise_z: 0.20  # Depth measurement noise [m]. Higher = trust depth less.
+  acceleration_noise: 1.5       # Continuous velocity diffusion [m^2/s^3].
+  measurement_std_lateral: 0.05 # Lateral/vertical standard deviation [m]; squared into R.
+  measurement_std_depth: 0.20   # Forward (project X) standard deviation [m]; squared into R.
 
 # ---------------------------------------------------------------------------
 # Eye assigner

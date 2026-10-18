@@ -140,6 +140,9 @@ class ControlMessage:
 
 @dataclass
 class Detection:
-    """A single face detection from the camera, with optional embedding for re-ID."""
-    position: Position3D
+    """Project-frame XYZ and/or a normalized image box from one camera frame."""
+    position: Position3D | None
     embedding: Any | None = None  # numpy ndarray in practice
+    bbox: tuple[float, float, float, float] | None = None  # xmin, ymin, xmax, ymax
+    confidence: float = 1.0
+    depth_quality: float = 1.0  # 0 = unavailable; otherwise relative measurement trust

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import argparse
+import json
 import time
+from contextlib import nullcontext
+from dataclasses import asdict
+
 from data_types import Detection, Position3D, ControlMessage
-from camera.detector import Detector
 from face_tracker import FaceTracker
 from eye_manager import EyeManager
 from config import EYE_CONFIGS, CAMERA_CONFIG
@@ -12,80 +16,63 @@ from parameters import params as _params
 
 class Controller:
     def __init__(self):
+        # Keep pure pipeline imports usable without installing the camera SDK.
+        from camera.detector import Detector
         self.running = True
-        self.detector = Detector(enable_visualizer = False)
+        self.detector = Detector(enable_visualizer=False)
         self.tracker = FaceTracker()
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
         self.publisher = Publisher()
 
     @staticmethod
-    def _camera_xyz_to_detection(xyz_m: tuple[float, float, float]) -> Detection:
-        x_right, y_down, z_forward = xyz_m
-        return Detection(
-            position=Position3D(
-                x=z_forward,
-                y=-x_right,
-                z=-y_down,
-            )
-        )
+    def _camera_xyz_to_detection(xyz_m: tuple[float, float, float] | None, *,
+                                 bbox=None, confidence=1.0) -> Detection:
+        position = None
+        if xyz_m is not None:
+            x_right, y_down, z_forward = xyz_m
+            position = Position3D(x=z_forward, y=-x_right, z=-y_down)
+        return Detection(position, bbox=bbox, confidence=confidence,
+                         depth_quality=1.0 if position is not None else 0.0)
 
-    ###############################################################################
-    # Main Loop
-    ###############################################################################
-
-    def run(self):
-        frame_idx = 0
-        last_frame_time = time.perf_counter()
-        while self.running:
-            now = time.perf_counter()
-            elapsed = now - last_frame_time
-            fps = 1.0 / elapsed if elapsed > 0 else 0.0
-            last_frame_time = now
-
-            faces = self.detector.poll_faces()
-            detections = [
-                self._camera_xyz_to_detection(face.xyz_m)
-                for face in faces or []
-                if face.xyz_m is not None
-            ]
-
-            tracked_faces = self.tracker.update(detections)
-            eye_states = self.eye_mgr.update(tracked_faces)
-
-            detected_count = len(faces) if faces is not None else 0
-            assigned = sum(1 for s in eye_states.values() if s.face_id is not None)
-            static_count = sum(1 for tf in tracked_faces.values() if tf.is_static)
-            print(
-                f"[Main][frame {frame_idx}]  "
-                f"fps={fps:.1f}  "
-                f"detected={detected_count}  "
-                f"positioned={len(detections)}  "
-                f"tracked={len(tracked_faces)}  "
-                f"assigned={assigned}  "
-                f"static={static_count}  "
-            )
-            frame_idx += 1
-
-            messages = {
-                eye_id: ControlMessage.from_state(state)
-                for eye_id, state in eye_states.items()
-            }
-            self.publisher.send(messages)
-
-            time.sleep(1 / _params.system.refresh_rate_hz)
+    def run(self, record_path: str | None = None):
+        period = 1 / _params.system.refresh_rate_hz
+        deadline = time.monotonic()
+        last_capture_time = None
+        log_context = open(record_path, "w") if record_path else nullcontext(None)
+        with log_context as recording:
+            while self.running:
+                frame = self.detector.poll_frame()
+                if frame is not None and (last_capture_time is None or frame.timestamp > last_capture_time):
+                    detections = [self._camera_xyz_to_detection(face.xyz_m, bbox=face.bbox,
+                                                                confidence=face.confidence)
+                                  for face in frame.faces]
+                    self.tracker.update(detections, timestamp=frame.timestamp)
+                    last_capture_time = frame.timestamp
+                    if recording is not None:
+                        recording.write(json.dumps({"timestamp": frame.timestamp, "sequence": frame.sequence,
+                                                    "detections": [asdict(d) for d in detections]}) + "\n")
+                # Project for publication without moving the measurement-time filter.
+                states = self.eye_mgr.update(self.tracker.get_output(time.monotonic()))
+                self.publisher.send({eye_id: ControlMessage.from_state(state) for eye_id, state in states.items()})
+                deadline += period
+                now = time.monotonic()
+                if deadline < now:
+                    deadline = now  # Reset after overrun rather than replaying missed slots.
+                time.sleep(max(0., deadline - now))
 
     def shutdown(self):
-        self.detector.shutdown()
         self.running = False
+        self.detector.shutdown()
+        self.publisher.close()
 
 
-###############################################################################
-# Main Entry
-###############################################################################
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--record", help="Write capture timestamps and project-frame detections as JSONL for replay")
+    args = parser.parse_args()
     controller = Controller()
     try:
-        controller.run()
+        controller.run(record_path=args.record)
     except KeyboardInterrupt:
         pass
     finally:

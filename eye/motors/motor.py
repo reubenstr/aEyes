@@ -1,4 +1,5 @@
 import os
+from time import monotonic
 import can
 from rich import print
 from can.interface import Bus
@@ -76,6 +77,7 @@ class Motor:
         self.encoder_position: int = 0
         self.raw_position_degrees: float = 0
         self.position_degrees: float = 0
+        self.position_sample_time: float | None = None
 
         # Motor fault states (from motor driver):
         self.under_voltage_protection: bool = False
@@ -278,7 +280,7 @@ class Motor:
         reply = self.op_wait_for_reply()
         if reply:
             reply_motor_id = reply.arbitration_id - self.ARBITRATION_BASE_OFFSET
-            if self.motor_id == reply_motor_id:  
+            if self.motor_id == reply_motor_id and len(reply.data) == 8 and reply.data[0] == 0x92:
 
 
                 #raw_data = int.from_bytes(reply.data[1:8] + b'\x00', byteorder='little', signed=True)
@@ -304,6 +306,7 @@ class Motor:
                 inverse_pos = -raw_pos if self.inverse_rotation else raw_pos    
                 self.raw_position_degrees = inverse_pos                
                 self.position_degrees = inverse_pos + self.position_offset           
+                self.position_sample_time = monotonic()
               
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")

@@ -138,47 +138,50 @@ class Motors:
     ###############################################################################
 
     def enable_all_motors(self):
-        max_attempts = 3
-        start = time()
         self.acquire_can_locks()
-        for motor in self.motors.values():
-            if self.allow_enable and motor.allow_motion:
-                print(f"[{self.tag}] enabling motor: {motor.name}")
-                attempt = 0
-                while True:
-                    if motor.cmd_motor_on():
-                        break
-                    else:
-                        attempt += 1
-                        print(f"[{self.tag}][ALL] error, failed to enable {motor.name}, attempt number {attempt}!")
-                        if attempt > max_attempts:
-                            self.motors_enabled = False                         
-                            self.release_can_locks()
-                            return False
-                        sleep(self.motor_enable_sequence_delay_seconds)
-
-                sleep(self.motor_enable_sequence_delay_seconds)
-        print(f"[{self.tag}][ALL] enable all motors on completed, time: {time() - start:0.3f}")
-        self.motors_enabled = True     
-        self.release_can_locks()
-        return True
-
-    def disable_all_motors(self):
-        start = time()       
-        self.acquire_can_locks()
-        if self.motors_enabled:
+        try:
+            self.motors_enabled = False
             for motor in self.motors.values():
                 if self.allow_enable and motor.allow_motion:
-                    print(f"[{self.tag}] disabling motor: {motor.name}")
-                    if not motor.cmd_motor_off():
-                        print(f"[{self.tag}][ALL] error, disable all motors failed!")
-                        self.release_can_locks()
+                    for attempt in range(4):
+                        if motor.cmd_motor_on():
+                            break
+                        sleep(self.motor_enable_sequence_delay_seconds)
+                    else:
+                        # Roll back every axis, including a command whose ACK was lost.
+                        self._disable_motors_locked()
                         return False
-                    sleep(self.motor_disable_sequence_delay_seconds)
-            print(f"[{self.tag}][ALL] disable all motors off completed, time: {time() - start:0.3f}")
-            self.motors_enabled = False
-            self.release_can_locks()
+                    sleep(self.motor_enable_sequence_delay_seconds)
+            self.motors_enabled = self.allow_enable
             return True
+        except Exception as error:
+            print(f"[Motors] Motor enable failed: {error}")
+            self._disable_motors_locked()
+            return False
+        finally:
+            self.release_can_locks()
+
+    def _disable_motors_locked(self):
+        self.motors_enabled = False
+        success = True
+        for motor in self.motors.values():
+            if self.allow_enable and motor.allow_motion:
+                try:
+                    if not motor.cmd_motor_off():
+                        success = False
+                except Exception as error:
+                    print(f"[Motors] Motor disable failed: {error}")
+                    success = False
+                sleep(self.motor_disable_sequence_delay_seconds)
+        return success
+
+    def disable_all_motors(self):
+        self.acquire_can_locks()
+        try:
+            # Includes partial enable and lost OFF ACKs; stop all worker commands.
+            return self._disable_motors_locked()
+        finally:
+            self.release_can_locks()
 
     def clear_errors_all_motors(self):
         start = time()
@@ -247,10 +250,31 @@ class Motors:
             if motor_name in self.motors:
                 return self.motors[motor_name].raw_position_degrees
             return None
+
+    def get_position_sample(self, motor_name: str):
+        """Atomic (inverted raw degrees, adjusted degrees, monotonic receive time)."""
+        motor = self.motors[motor_name]
+        with self.can_infos[motor.can_channel].lock:
+            if motor.position_sample_time is None or motor.is_error():
+                return None
+            return motor.raw_position_degrees, motor.position_degrees, motor.position_sample_time
         
     def set_position_offset(self, motor_name: str, value: float):
         if motor_name in self.motors:
             self.motors[motor_name].set_position_offset(value)
+
+    def apply_home_offsets(self, offsets: dict, speed: int):
+        """Change coordinate origins and zero targets atomically with CAN workers."""
+        self.acquire_can_locks()
+        try:
+            for name, offset in offsets.items():
+                motor = self.motors[name]
+                motor.set_position_offset(offset)
+                motor.position_degrees = motor.raw_position_degrees + offset
+                motor.enforce_position_limits = True
+                self.set_motor_targets(name, speed, 0.)
+        finally:
+            self.release_can_locks()
 
     def set_enforce_position_limits(self, motor_name: str, value: bool):
         if motor_name in self.motors:
@@ -262,9 +286,14 @@ class Motors:
         return None
 
     def set_inversion_rotation(self, motor_name: str, inverted: bool):
-        # TODO: setting the inverse needs to immediately recalculate current position
         if motor_name in self.motors:
-            self.motors[motor_name].inverse_rotation = inverted
+            motor = self.motors[motor_name]
+            with self.can_infos[motor.can_channel].lock:
+                if motor.inverse_rotation != inverted:
+                    motor.inverse_rotation = inverted
+                    motor.raw_position_degrees *= -1
+                    motor.position_degrees = motor.raw_position_degrees + motor.position_offset
+                    self.set_motor_targets(motor_name, self.target_speeds[motor_name], motor.position_degrees)
                 
     def is_can_error(self) -> bool:
         for can_info in self.can_infos.values():
@@ -281,6 +310,9 @@ class Motors:
     ###############################################################################
 
     def _start(self):    
+        if not all(info.status == Status.ACTIVE for info in self.can_infos.values()):
+            print(f"[{self.tag}] error, unable to start motors, not all CAN interfaces are active!")
+            return
         self.set_pid_all_motors()     
 
         # Get initial positions, start target, and check for offset.
@@ -315,11 +347,11 @@ class Motors:
             rotation += 1
             for key, motor in self.motors.items():
                 if motor.can_channel == can_info.can_channel:
-                    target_position = self.target_positions[key]
-                    target_speed = self.target_speeds[key]                    
-
                     with can_info.lock:
-                        if motor.allow_motion and motor.is_enabled():
+                        with self.data_lock:
+                            target_position = self.target_positions[key]
+                            target_speed = self.target_speeds[key]
+                        if self.motors_enabled and motor.allow_motion and motor.is_enabled():
                             motor.cmd_set_angle_and_speed(position=target_position, speed=target_speed)                           
                             motor.req_position()
                             if rotation % 2 == 0:

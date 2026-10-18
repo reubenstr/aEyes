@@ -51,9 +51,7 @@ class Conversions:
         p_yaw = from_homogeneous(T_gimbal_base @ to_homogeneous(p_base))
 
         # Yaw: angle from gimbal origin to target in the base XY plane
-        x_base, y_base, _ = p_base
-        gimbal_y = self.T_base_gimbal[eye_id][1, 3]
-        yaw_deg = np.degrees(np.arctan2(y_base - gimbal_y, x_base))
+        yaw_deg = np.degrees(np.arctan2(p_yaw[1], p_yaw[0]))
 
         # Pitch: rotate into yaw-aligned frame, offset to pitch pivot, then arctan
         R_yaw = R_from_rpy(0.0, 0.0, np.radians(yaw_deg))

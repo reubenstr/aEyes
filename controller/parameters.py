@@ -42,13 +42,18 @@ class TrackerParams:
     embedding_ema_keep: float
     static_window: int
     static_speed_thresh_mps: float
+    mahalanobis_gate: float
+    min_detection_confidence: float
+    min_bbox_iou: float
+    depth_grace_s: float
+    coast_time_s: float
 
 
 @dataclass
 class KalmanParams:
-    process_noise: float
-    measurement_noise_xy: float
-    measurement_noise_z: float
+    acceleration_noise: float
+    measurement_std_lateral: float
+    measurement_std_depth: float
 
 
 @dataclass
@@ -130,12 +135,21 @@ def _validate(p: Params) -> None:
     check(p.tracker.max_missing_tentative >= 1,
           "tracker.max_missing_tentative must be a positive integer")
 
-    check(p.kalman.process_noise > 0.0,
-          "kalman.process_noise must be positive")
-    check(p.kalman.measurement_noise_xy > 0.0,
-          "kalman.measurement_noise_xy must be positive")
-    check(p.kalman.measurement_noise_z > 0.0,
-          "kalman.measurement_noise_z must be positive")
+    for name in ("acceleration_noise", "measurement_std_lateral", "measurement_std_depth"):
+        value = getattr(p.kalman, name)
+        check(math.isfinite(value) and value > 0.0, f"kalman.{name} must be finite and positive")
+    check(math.isfinite(p.tracker.depth_scale_factor) and p.tracker.depth_scale_factor >= 0,
+          "tracker.depth_scale_factor must be finite and nonnegative")
+    check(math.isfinite(p.tracker.mahalanobis_gate) and p.tracker.mahalanobis_gate > 0,
+          "tracker.mahalanobis_gate must be finite and positive")
+    check(0 <= p.tracker.min_detection_confidence <= 1,
+          "tracker.min_detection_confidence must be in [0, 1]")
+    check(0 < p.tracker.min_bbox_iou <= 1, "tracker.min_bbox_iou must be in (0, 1]")
+    for name in ("depth_grace_s", "coast_time_s"):
+        value = getattr(p.tracker, name)
+        check(math.isfinite(value) and value > 0, f"tracker.{name} must be finite and positive")
+    check(p.tracker.reid_window_frames >= 1 and p.tracker.reid_max_distance > 0,
+          "tracker re-ID window and distance must be positive")
 
     check(p.assigner.assign_interval_s > 0.0,
           "assigner.assign_interval_s must be positive")
