@@ -28,7 +28,7 @@ describe('application dashboard', () => {
     vi.mocked(useTelemetry).mockReturnValue({ state: null, connected: true });
     render(<App />);
     expect(screen.getByText('AEYES / WAITING')).toBeTruthy();
-    expect(screen.getByText('Waiting for main.py or demo.py to publish data.')).toBeTruthy();
+    expect(screen.getByText('Waiting for main.py (live or --demo) to publish data.')).toBeTruthy();
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByText('Waiting for application telemetry.')).toBeTruthy();
   });
@@ -38,11 +38,11 @@ describe('application dashboard', () => {
     render(<App />);
     expect(screen.getByText('AEYES / SIMULATION')).toBeTruthy();
     expect(screen.getAllByText('No camera in this source').length).toBeGreaterThan(0);
-    expect(screen.getByText('reachable')).toBeTruthy();
+    expect(screen.getByText('online')).toBeTruthy();
     expect(screen.getByText('confirmed')).toBeTruthy();
     expect(document.querySelector('img')).toBeNull();
-    const card = screen.getByText('reachable').closest('article')!;
-    expect(within(card).getByText('#42')).toBeTruthy();
+    const card = screen.getByText('online').closest('article')!;
+    expect(within(card).getByText('Face #42')).toBeTruthy();
     expect(within(card).getByText('12.3')).toBeTruthy();
   });
 
@@ -57,7 +57,7 @@ describe('application dashboard', () => {
     expect(screen.queryByText('confirmed')).toBeNull();
     expect(screen.queryByText('12.3')).toBeNull();
     expect(screen.queryByText('15.0')).toBeNull();
-    expect(screen.getByText('reachable')).toBeTruthy();
+    expect(screen.getByText('online')).toBeTruthy();
     expect(screen.getByText(/Application telemetry stopped/)).toBeTruthy();
   });
 });

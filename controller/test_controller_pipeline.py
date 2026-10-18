@@ -11,11 +11,55 @@ import numpy as np
 from conversions import Conversions
 from data_types import CameraConfig, Detection, EyeConfig, Position3D
 from face_tracker import FaceTracker
-from main import Controller
+from main import Controller, main
+from demo import get_detections
 from replay import evaluate
 
 
 class ControllerTimingTests(unittest.TestCase):
+    def test_demo_runs_without_camera_or_gui_and_records_replayable_project_detections(self):
+        now = [1.]
+        with patch.dict('sys.modules', {'camera.detector': None, 'depthai': None,
+                                       'PySide6': None, 'pyqtgraph': None, 'matplotlib': None}), \
+             patch('main.Publisher') as publisher:
+            controller = Controller(demo=True, monitor=False)
+            controller.tracker.min_hits_to_confirm = 1
+            sleeps = []
+
+            def sleep(duration):
+                sleeps.append(duration)
+                now[0] += duration
+                if len(sleeps) == 3:
+                    controller.running = False
+
+            try:
+                with tempfile.TemporaryDirectory() as directory:
+                    recording = Path(directory) / 'demo.jsonl'
+                    with patch('main.time.monotonic', side_effect=lambda: now[0]), \
+                         patch('main.time.sleep', side_effect=sleep):
+                        controller.run(str(recording))
+                    records = [json.loads(line) for line in recording.read_text().splitlines()]
+                self.assertEqual([r['sequence'] for r in records], [0, 1, 2])
+                for index, record in enumerate(records):
+                    self.assertEqual(record['detections'], [asdict(d) for d in get_detections(index)])
+                    self.assertAlmostEqual(record['timestamp'], 1. + index / 15)
+                self.assertEqual(evaluate(records)['frames'], 3)
+                self.assertEqual(publisher.return_value.send.call_count, 3)
+                self.assertEqual(set(publisher.return_value.send.call_args.args[0]), set(range(1, 7)))
+                for duration in sleeps:
+                    self.assertAlmostEqual(duration, 1 / 15)
+            finally:
+                controller.shutdown()
+            publisher.return_value.close.assert_called_once()
+
+    def test_demo_cli_shares_recording_monitoring_and_shutdown_options(self):
+        with patch('main.Controller') as controller, patch('main.signal.signal'):
+            controller.return_value.run.side_effect = KeyboardInterrupt
+            main(['--demo', '--no-monitor', '--record', '/tmp/demo.jsonl'])
+            controller.assert_called_once_with(monitor=False, demo=True)
+            controller.return_value.run.assert_called_once_with(record_path='/tmp/demo.jsonl')
+            controller.return_value.shutdown.assert_called_once()
+
     def test_no_frame_is_not_a_miss_and_processing_time_is_subtracted_from_sleep(self):
         now = [1.]
         controller = Controller.__new__(Controller)

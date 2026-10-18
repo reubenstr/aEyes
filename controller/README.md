@@ -95,17 +95,18 @@ Start the monitoring API in terminal 1, from `controller/`:
 .venv/bin/python -m monitoring --reload --host 127.0.0.1 --port 8080
 ```
 
-Start the existing application demo in terminal 2, from `controller/`:
+Start the controller with synthetic detections in terminal 2, from `controller/`:
 
 ```bash
-.venv/bin/python demo.py
+.venv/bin/python main.py --demo
 ```
 
-**The demo publishes commands to physical eyes.** It requires a desktop/display
-for its existing Qt visualizer, but does not open a camera. It runs synthetic
-detections through the real tracker and eye manager, and publishes their results
-to the same monitoring feed as `main.py`. Tracks still need confirmation before
-they become visible or receive eyes (30 matched observations by default).
+**Demo mode publishes commands to physical eyes.** It runs without a camera or
+desktop/display. Synthetic detections use the same tracker, eye manager, publish
+schedule, and monitoring feed as the live controller. The browser dashboard renders
+the results. Tracks still need confirmation before they become visible or receive
+eyes (30 matched observations by default). `demo.py` only supplies detections; start
+demo mode through `main.py --demo` or `sudo ./main.sh --demo`.
 
 Start Vite in terminal 3, from `controller/ui/`:
 
@@ -121,14 +122,14 @@ The dashboard identifies this source as **Simulation** and shows the application
 tracked faces, assignments, gaze lines, trajectories, colors, and commanded angles.
 Camera preview and face crops show **No camera in this source**; images are not
 generated for the dashboard. Settings can be saved, then applied by restarting
-`demo.py` in its terminal. **Save and restart** is unavailable for this source
+`main.py --demo` in its terminal. **Save and restart** is unavailable for this source
 because service control only restarts the live controller's `main.service`.
 
 The monitoring API always listens for application telemetry. It has no separate
-`--demo` mode or synthetic data generator. Run either `main.py` or `demo.py`, one
-at a time: both bind the eye-command port (9000 by default), and the local
-monitoring feed uses port 9101. Stop an installed `main.service` before running
-the demo manually.
+`--demo` mode or synthetic data generator of its own. Run one controller at a
+time, either `main.py` or `main.py --demo`: both bind the eye-command port (9000 by
+default), and the local monitoring feed uses port 9101. Stop an installed
+`main.service` before running the demo manually.
 
 With neither application publishing, the dashboard waits for data. After roughly
 one second without fresh telemetry, tracking, assignments, command values, rates,
@@ -166,8 +167,11 @@ and camera preview are enabled by default, including through `main.sh` and the
 installed controller service. Use `main.py --no-monitor` to disable the extra
 preview output and monitoring producer. The existing `--monitor` flag remains
 accepted. Capture recording remains available: `main.py --record /tmp/captures.jsonl`.
-The dashboard labels this source **Live camera**. The monitoring API and browser
-can remain open while you stop one application and start the other.
+The dashboard labels the live controller as **Live camera**.
+Demo mode accepts the same options, including `--no-monitor` and
+`--record /tmp/demo.jsonl`; synthetic recordings can be read by `replay.py`.
+The monitoring API and browser can remain open while you stop one mode and start
+the other.
 
 Start Vite in terminal 3, from `controller/ui/`:
 
@@ -191,8 +195,8 @@ rejected rather than overwriting another save.
 
 **Save and restart** is available through the installed monitor service and restarts
 only the controller's `main.service`. It is disabled while the telemetry source is
-`demo.py`, including after its feed goes stale. The web backend remains online.
-In manual development, save and restart `main.py` or `demo.py` in its terminal
+`main.py --demo`, including after its feed goes stale. The web backend remains online.
+In manual development, save and restart `main.py` or `main.py --demo` in its terminal
 instead. Publisher address/port changes also need matching eye-side network
 settings. The monitor's
 HTTP/telemetry ports are reserved against publisher collisions.
@@ -264,24 +268,3 @@ restarted by installation; restart it explicitly after updating controller code:
 sudo systemctl restart aeyes-monitor.service
 sudo systemctl restart main.service
 ```
-
-## Existing simulations
-
-From `controller/`, run the Matplotlib or Qt synthetic visualizer without command
-publication:
-
-```bash
-.venv/bin/python plot.py
-.venv/bin/python visual.py
-```
-
-The existing Qt demo **publishes commands to physical eyes** and dashboard telemetry:
-
-```bash
-.venv/bin/python demo.py
-```
-
-Use it with the same monitoring API and browser described above. Its tracking and
-eye state appear in the dashboard; camera images and face crops are unavailable.
-Pausing the Qt demo stops its updates, so dashboard telemetry becomes stale until
-it resumes.

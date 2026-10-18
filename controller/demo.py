@@ -1,30 +1,12 @@
-import signal
-import sys
+"""Synthetic project-frame detections for ``main.py --demo``.
+
+The controller owns timing, tracking, publication and monitoring. This module has
+no camera, rendering or network dependencies.
+"""
+
 import math
-import logging
-import time
-from PySide6 import QtCore, QtWidgets
-from data_types import ControlMessage, Detection, Position3D
-from face_tracker import FaceTracker
-from eye_manager import EyeManager
-from config import EYE_CONFIGS, CAMERA_CONFIG
-from visual import PlotWindow
-from publisher import Publisher
-from parameters import params as _params
-from monitoring.bridge import MonitorBridge
 
-"""
-    Generates demo face locations and passing data through the pipeline to the physical eyes.
-    No camera or inference.
-    Sends data to eyes.
-
-    Active virtual environment:
-        source .venv/bin/activate
-
-    Extra dependancies:   
-        python3 -m pip install PySide6 pyqtgraph PyOpenGL  
-        sudo apt-get install -y libxcb-cursor0
-"""
+from data_types import Detection, Position3D
 
 
 def get_detections(frame: int) -> list[Detection]:
@@ -79,59 +61,3 @@ def get_detections(frame: int) -> list[Detection]:
         return [face_static, face_b]
     else:
         return [face_static, face_b, face_a]
-
-
-class Demo(QtCore.QObject):
-    def __init__(self, window: PlotWindow) -> None:
-        super().__init__()
-        self.window = window
-        self.frame = 0
-        self.tracker = FaceTracker()
-        self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
-
-        self.publisher = Publisher()
-        self.monitor = MonitorBridge(active_config=_params, source="demo", camera_available=False)
-
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(1000 // _params.system.refresh_rate_hz)
-
-    def _tick(self) -> None:
-        if self.window.paused:
-            return
-        dets = get_detections(self.frame % 500)
-        tracked_faces = self.tracker.update(dets, timestamp=time.monotonic())
-        eye_states = self.eye_mgr.update(tracked_faces)
-
-        messages = {
-            eye_id: ControlMessage.from_state(state)
-            for eye_id, state in eye_states.items()
-        }
-        self.publisher.send(messages)
-        try:
-            self.monitor.offer(self.tracker, eye_states)
-        except Exception:
-            logging.exception("Monitoring snapshot failed; demo publication continues")
-
-        self.window.push_frame(self.frame % 500, tracked_faces, eye_states)
-        self.frame += 1
-
-    def shutdown(self) -> None:
-        self.timer.stop()
-        try:
-            self.monitor.close()
-        finally:
-            self.publisher.close()
-
-
-if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
-    signal.signal(signal.SIGINT, lambda *_: app.quit())
-    signal.signal(signal.SIGTERM, lambda *_: app.quit())
-    window = PlotWindow(driven_externally=True)
-    window.show()
-    demo = Demo(window)
-    try:
-        sys.exit(app.exec())
-    finally:
-        demo.shutdown()

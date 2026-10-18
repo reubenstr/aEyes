@@ -26,13 +26,12 @@ For local development, use the existing controller virtual environment or create
 ```bash
 cd controller
 .venv/bin/python -m unittest discover -v
-.venv/bin/python plot.py
-.venv/bin/python visual.py
+.venv/bin/python main.py --demo
 ```
 
 - The unittest suite runs without a camera, GPIO, CAN motors, or a display; the renderer tests mock OpenGL/Pyglet.
-- `plot.py` is the Matplotlib simulation; `visual.py` is the PySide6/pyqtgraph simulation. Both use synthetic detections and do not publish commands.
-- `demo.py` uses a Qt visualizer and **publishes commands to physical eyes**.
+- `main.py --demo` uses synthetic detections through the shared controller pipeline and **publishes commands to physical eyes**. It requires no camera or display; use the web dashboard for visualization. `demo.py` only supplies detections.
+- Demo mode supports the same `--record` and `--no-monitor` options as live mode; `sudo ./main.sh --demo` forwards the flag.
 - To exercise the camera alone, run `.venv/bin/python -m camera.detector` from `controller/`; add `--visualizer` for the DepthAI remote visualizer (HTTP port 8082).
 - Tests cover capture timing/metadata, tracking and covariance gates, crossings/dropouts, rendering compatibility, motor ramp timing, and mocked homing/enable failures. Physical camera, CAN, and endstop behavior still require hardware validation.
 
@@ -96,7 +95,7 @@ Optional independent ground truth can be added to each frame as `truth: [{"id": 
 - Positive yaw is CCW viewed from above; positive pitch is upward. `get_pitch_yaw()` returns **(yaw, pitch)** in degrees.
 - The pitch pivot is **103.5 mm** forward of the yaw pivot (`PITCH_PIVOT_OFFSET`), not 80 mm.
 - Camera mount: `(0.04375, 0.0, 0.0)` meters. Camera rotation is currently hard-coded to zero.
-- `CAMERA_CONFIG` FOV values (127° horizontal, 79.5° vertical) are used by the simulators; camera spatial inference uses the DepthAI pipeline.
+- `CAMERA_CONFIG` FOV values (127° horizontal, 79.5° vertical) are used by the dashboard; camera spatial inference uses the DepthAI pipeline.
 - Yaw is calculated in the translated gimbal frame, accounting for both gimbal X and Y offsets; pitch then accounts for the rotated pitch-pivot offset.
 
 All layout values live in `controller/config.py`:
@@ -191,14 +190,14 @@ The installed eye service sets `DISPLAY=:0` and `XAUTHORITY`. Controller auto-st
 
 | File | Role |
 |---|---|
-| `controller/main.py` | Live camera → tracking → eye state → publication loop |
+| `controller/main.py` | Live camera or `--demo` detections → tracking → eye state → publication loop |
 | `controller/camera/detector.py` | Active DepthAI v3 YuNet + aligned stereo spatial pipeline |
 | `controller/face_tracker.py`, `kalman_filter_3d.py` | Track lifecycle, association, re-ID, constant-velocity filtering |
 | `controller/eye_assigner.py`, `eye_manager.py` | Face-to-eye allocation, palettes, blinks, eyelids, orientation |
 | `controller/conversions.py`, `matrix_utils.py` | Coordinate transforms and gimbal geometry |
 | `controller/parameters.py`, `params.yaml`, `config.py` | Behavioral settings and physical layout |
 | `controller/publisher.py`, both `data_types.py` files | JSON/ZMQ wire contract |
-| `controller/demo.py`, `visual.py`, `plot.py` | Synthetic pipeline demos and visualizers |
+| `controller/demo.py` | Synthetic project-frame detections for `main.py --demo` |
 | `controller/replay.py` | Capture-log replay and optional ground-truth metrics |
 | `controller/monitoring/`, `controller/ui/` | Isolated FastAPI monitoring/MJPEG API and Yarn/Vite/React/Three.js dashboard |
 | `controller/deploy/` | Controller/monitor systemd units, port-80 nginx proxy, restricted restart rule |
@@ -207,8 +206,8 @@ The installed eye service sets `DISPLAY=:0` and `XAUTHORITY`. Controller auto-st
 | `eye/eye_renderer.py`, `eye/shaders/eye.frag` | Pyglet/GLES 3.1 rendering and procedural eye shader |
 | `eye/motors/`, `eye/zero.py` | CAN control/configuration and manual zeroing |
 
-Both components have their own `requirements.txt` and `.venv`. Controller dependencies include DepthAI 3.6.1, depthai-nodes 0.5.0, NumPy/SciPy, PyYAML, pyzmq, OpenCV, and the plotting/Qt libraries. Eye dependencies include Pyglet, PyOpenGL, pyzmq, NumPy, python-can, RPi.GPIO, rich, and prompt_toolkit. The controller requirements still include both OpenCV wheel variants and an older redundant DepthAI lower bound; inspect the file before changing dependency pins.
+Both components have their own `requirements.txt` and `.venv`. Controller dependencies include DepthAI 3.6.1, depthai-nodes 0.5.0, NumPy/SciPy, PyYAML, pyzmq, OpenCV, and the monitoring API libraries. Eye dependencies include Pyglet, PyOpenGL, pyzmq, NumPy, python-can, RPi.GPIO, rich, and prompt_toolkit. The controller requirements still include both OpenCV wheel variants and an older redundant DepthAI lower bound; inspect the file before changing dependency pins.
 
 ## Web Dashboard Development
 
-From `controller/`, run `.venv/bin/python -m monitoring --reload` for the monitoring API, then run either `main.py` (live camera) or `demo.py` (synthetic detections through the real pipeline). Both publish commands to physical eyes and dashboard telemetry; run only one at a time. Monitoring is enabled by default in `main.py`; `--no-monitor` disables it. The demo retains its Qt display requirement and has no camera images/crops. The API has no separate demo generator; without fresh application telemetry, application values are cleared while host metrics and eye reachability continue. From `controller/ui/`, run `yarn dev` and open http://localhost:5173/. Production nginx serves port 80 and proxies `/api` to localhost:8080; the monitoring feed uses loopback ZMQ port 9101. Eye status is network reachability only. See controller/README.md for full commands. Run `yarn test` and `yarn build` in `controller/ui/` and the controller unittest suite after changes. The standard unittest API/transport tests require local event-loop/socket access.
+From `controller/`, run `.venv/bin/python -m monitoring --reload` for the monitoring API, then run either `main.py` (live camera) or `main.py --demo` (synthetic detections through the same pipeline, without camera or display). Both publish commands to physical eyes and dashboard telemetry; run only one at a time. Monitoring is enabled by default in both modes; `--no-monitor` disables it. Demo mode has no camera images/crops. The API has no separate demo generator; without fresh application telemetry, application values are cleared while host metrics and eye reachability continue. From `controller/ui/`, run `yarn dev` and open http://localhost:5173/. Production nginx serves port 80 and proxies `/api` to localhost:8080; the monitoring feed uses loopback ZMQ port 9101. Eye status is network reachability only. See controller/README.md for full commands. Run `yarn test` and `yarn build` in `controller/ui/` and the controller unittest suite after changes. The standard unittest API/transport tests require local event-loop/socket access.

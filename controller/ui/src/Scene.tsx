@@ -94,7 +94,7 @@ export function Scene({ state }: { state: Telemetry | null }) {
     controls.minDistance = 0.8;
     controls.maxDistance = 12;
     reset.current = () => {
-      camera.position.set(4.5, -4, 2.7);
+      camera.position.set(3.65, -3, 2.025);
       controls.target.set(1.1, 0, 0);
       controls.update();
     };

@@ -1,5 +1,4 @@
 import asyncio
-import importlib.util
 from copy import deepcopy
 from dataclasses import asdict
 import json
@@ -227,18 +226,14 @@ class StateTests(unittest.TestCase):
             controller.shutdown()
 
     def test_demo_publishes_real_pipeline_state_on_the_monotonic_clock_and_closes(self):
-        spec = importlib.util.spec_from_file_location('demo_monitor_test', Path(__file__).with_name('demo.py'))
-        demo_module = importlib.util.module_from_spec(spec)
-        qt = SimpleNamespace(QtCore=SimpleNamespace(QObject=object, QTimer=Mock()), QtWidgets=Mock())
-        with patch.dict(sys.modules, {'PySide6': qt, 'visual': SimpleNamespace(PlotWindow=Mock())}):
-            spec.loader.exec_module(demo_module)
+        from main import Controller
         now = time.monotonic()
-        window = Mock(paused=False)
-        with patch.object(demo_module, 'Publisher') as publisher, \
+        with patch('main.Publisher') as publisher, \
              patch('monitoring.bridge.Thread.start'), patch('time.monotonic', return_value=now):
-            demo = demo_module.Demo(window)
+            demo = Controller(demo=True)
             demo.tracker.min_hits_to_confirm = 1
-            demo._tick()
+            with patch('main.time.sleep', side_effect=lambda _: setattr(demo, 'running', False)):
+                demo.run()
             packet = demo.monitor.pending.get_nowait()
             state = MonitorState()
             state.accept(packet)
@@ -254,29 +249,22 @@ class StateTests(unittest.TestCase):
             for eye in current['eyes']:
                 self.assertEqual(eye['yaw'], commands[eye['eye_id']].yaw)
                 self.assertEqual(eye['pitch'], commands[eye['eye_id']].pitch)
-            window.paused = True
-            demo._tick()
             self.assertTrue(demo.monitor.pending.empty())
             self.assertEqual(state.describe(now=now+2)['faces'], [])
             with patch.object(demo.monitor.worker, 'join'):
                 demo.shutdown()
             self.assertTrue(demo.monitor.stop_event.is_set())
-            demo.timer.stop.assert_called_once()
             publisher.return_value.close.assert_called_once()
 
     def test_demo_monitoring_failure_does_not_interrupt_command_publication(self):
-        spec = importlib.util.spec_from_file_location('demo_failure_test', Path(__file__).with_name('demo.py'))
-        demo_module = importlib.util.module_from_spec(spec)
-        qt = SimpleNamespace(QtCore=SimpleNamespace(QObject=object, QTimer=Mock()), QtWidgets=Mock())
-        with patch.dict(sys.modules, {'PySide6': qt, 'visual': SimpleNamespace(PlotWindow=Mock())}):
-            spec.loader.exec_module(demo_module)
-        with patch.object(demo_module, 'Publisher'), patch.object(demo_module, 'MonitorBridge'):
-            demo = demo_module.Demo(Mock(paused=False))
+        from main import Controller
+        with patch('main.Publisher'), patch('monitoring.bridge.MonitorBridge'):
+            demo = Controller(demo=True)
             demo.monitor.offer.side_effect = RuntimeError('observer failure')
-            with self.assertLogs(level='ERROR'):
-                demo._tick()
+            with patch('main.time.sleep', side_effect=lambda _: setattr(demo, 'running', False)):
+                with self.assertLogs(level='ERROR'):
+                    demo.run()
             demo.publisher.send.assert_called_once()
-            demo.window.push_frame.assert_called_once()
             demo.shutdown()
 
     def test_snapshot_failure_does_not_interrupt_controller_publication(self):

@@ -122,7 +122,7 @@ class SettingsTests(unittest.TestCase):
             self.assertTrue(response.json()['pending_restart'])
             restart = client.post('/api/controller/restart', json={'revision':response.json()['revision']})
             self.assertEqual(restart.status_code, 409)
-            self.assertIn('demo.py', restart.json()['detail'])
+            self.assertIn('main.py --demo', restart.json()['detail'])
         service.restart.assert_not_awaited()
 
     def test_active_configuration_is_unavailable_after_application_feed_stops(self):

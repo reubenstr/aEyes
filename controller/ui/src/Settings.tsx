@@ -55,7 +55,7 @@ export function Settings({ state }: { state: Telemetry | null }) {
   return <div className="settings">
     <section className="panel settings-intro"><div><h2>Controller Configuration</h2><p>Changes are validated and saved to params.yaml. Restart the running application to apply them.</p></div>
       <span className={`pill ${pending ? 'warning' : running ? 'good' : ''}`}>{!running ? 'No active application' : pending ? 'Restart pending' : 'Settings active'}</span></section>
-    {source === 'demo' && <div className="notice">Simulation source · Settings can be saved. Restart demo.py in its terminal to apply them.</div>}
+    {source === 'demo' && <div className="notice">Simulation source · Settings can be saved. Restart main.py --demo in its terminal to apply them.</div>}
     {error && <div className="notice error" role="alert">{error} <button className="subtle" onClick={() => window.location.reload()}>Reload settings</button></div>}
     {message && <div className="notice" role="status">{message}</div>}
     <div className="settings-actions"><span>{dirty ? 'Unsaved changes' : 'Saved configuration'}{waiting ? ' · Restarting…' : ''}</span><div>

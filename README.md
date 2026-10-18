@@ -8,9 +8,12 @@ aEyes is a robotic face tracker with a set of six eyes tracking faces as they tr
 
 # Simulation
 
-![Simulation and demo GUI](images/aEyes-simulation-and-demo-gui.png)
-
-The simulation (using PySide6 + pyqtgraph GUI) generates face positions moving through 3-space with some faces disappearing completely, disappearing and reappearing, or staying static. These faces are then sent through the face tracking, assignment, and eye manager pipeline to generate yaw and pitch of the indivdual eyes. 
+Run `main.py --demo` from `controller/` to generate face positions moving through
+3D space, disappearing, reappearing, or staying static. Demo mode uses the same
+tracking, assignment, and publication pipeline as the live camera and sends
+commands to physical eyes. The web dashboard visualizes the results; no camera or
+desktop display is required. See the [controller development guide](controller/README.md#dashboard-development-with-the-simulation)
+for startup instructions.
 
 # Pipeline
 

@@ -22,7 +22,8 @@ body {
 }
 
 .app {
-    --page-gutter: 44px
+    --page-gutter: 44px;
+    --card-gap: 20px
 }
 
 .topbar,
@@ -95,17 +96,10 @@ p {
     margin: 8px 0 0
 }
 
-h1,
 h2 {
     margin: 0;
     font-weight: 500;
     letter-spacing: -.025em
-}
-
-h1 {
-    font-size: 40px;
-    margin-top: 0;
-    line-height: 1.2
 }
 
 h2 {
@@ -197,14 +191,10 @@ small {
 }
 
 main {
-    padding: 36px 0 40px
-}
-
-.page-heading {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 28px
+    flex-direction: column;
+    gap: var(--card-gap);
+    padding: 0 0 40px
 }
 
 .device-badge {
@@ -213,16 +203,16 @@ main {
     letter-spacing: .1em;
     padding: 9px 11px;
     border: 1px solid #323232;
-    border-radius: 5px
+    border-radius: 5px;
+    margin-left: auto;
+    white-space: nowrap
 }
 
 .status-strip {
     display: flex;
     align-items: center;
-    gap: 24px;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-    padding: 14px 0;
+    gap: 12px 24px;
+    padding: 14px 0 0;
     font-size: 14px;
     color: #adadad;
     flex-wrap: wrap
@@ -263,8 +253,7 @@ main {
 .visual-grid {
     display: grid;
     grid-template-columns: 1fr 1.17fr;
-    gap: 18px;
-    margin-top: 22px
+    gap: var(--card-gap)
 }
 
 .panel {
@@ -422,18 +411,17 @@ main {
     font-size: 16px
 }
 
-.array-panel {
-    margin-top: 24px
-}
-
 .eyes-grid {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 12px;
-    padding: 0 20px 20px
+    gap: var(--card-gap);
+    padding: 2px 20px 20px
 }
 
 .eye-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 14px 12px 12px;
@@ -442,12 +430,11 @@ main {
 }
 
 .eye-card-heading {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    font-size: 13px;
-    gap: 7px
+    font-size: 12px;
+    gap: 6px
 }
 
 .eye-card-heading b {
@@ -455,6 +442,15 @@ main {
     font-weight: 400;
     color: #c5c5c5;
     margin-left: 4px
+}
+
+.eye-identity {
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    white-space: nowrap
 }
 
 .reachability {
@@ -471,92 +467,32 @@ main {
 }
 
 .eye-preview {
-    height: 78px;
-    position: relative;
+    min-width: 0;
+    min-height: 96px;
     display: flex;
     align-items: center;
-    justify-content: center
+    justify-content: center;
 }
 
 .eye-shape {
-    position: relative;
-    width: 69px;
-    height: 69px;
-    background: #ececec;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden
-}
-
-.eyelids {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
-    pointer-events: none;
-    fill: #353535;
-    stroke: #1b1b1b;
-    stroke-width: .8
-}
-
-.iris {
-    width: 34px;
-    height: 34px;
-    background: var(--eye-color);
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    box-shadow: inset 0 0 9px #12121266
-}
-
-.pupil {
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-    background: #101010;
-    position: relative
-}
-
-.pupil:after {
-    content: '';
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    left: 3px;
-    top: 2px;
-    border-radius: 50%;
-    background: #ffffff9c
-}
-
-.eye-target {
-    position: absolute;
-    bottom: 9px;
-    right: 9px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    border: 1px solid #ffffff20
+    display: block;
+    width: 112px;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    flex-shrink: 0
 }
 
 .assignment {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 5px 0 11px
-}
-
-.assignment .eyebrow {
-    margin: 0;
-    font-size: 12px
-}
-
-.assignment strong {
-    font: 14px 'IBM Plex Mono', monospace;
+    align-self: start;
+    justify-self: end;
+    min-width: 0;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--primary-bright)
 }
 
@@ -599,8 +535,7 @@ main {
 .eye-angles {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 5px;
-    margin-top: 13px
+    gap: 5px
 }
 
 .eye-angles>div {
@@ -624,10 +559,6 @@ main {
     font-size: 12px;
     margin-left: 1px;
     color: #acacac
-}
-
-.system-panel {
-    margin-top: 23px
 }
 
 .resource-grid {
@@ -688,10 +619,6 @@ main {
     background: var(--primary)
 }
 
-.faces-panel {
-    margin-top: 22px
-}
-
 .table-wrap {
     overflow-x: auto
 }
@@ -745,7 +672,7 @@ td.numeric {
     border-radius: 6px;
     padding: 13px 16px;
     font-size: 16px;
-    margin: 15px 0;
+    margin: 0;
     line-height: 1.5
 }
 
@@ -759,6 +686,12 @@ td.numeric {
     color: #fbbf24;
     border-color: #585858;
     background: #252525
+}
+
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-gap)
 }
 
 .settings-loading {
@@ -779,7 +712,7 @@ td.numeric {
     align-items: center;
     justify-content: space-between;
     gap: 15px;
-    padding: 20px 0
+    padding: 0
 }
 
 .settings-actions>span {
@@ -791,10 +724,6 @@ td.numeric {
     display: flex;
     gap: 8px;
     flex-wrap: wrap
-}
-
-.config-section {
-    margin-top: 20px
 }
 
 .config-heading {
@@ -886,7 +815,6 @@ td.numeric {
 }
 
 .geometry-settings {
-    margin-top: 24px;
     padding: 22px
 }
 
@@ -907,13 +835,9 @@ td.numeric {
     .face-crop {
         height: 90px
     }
-
-    .eye-preview {
-        height: 88px
-    }
 }
 
-@media(max-width:1280px) {
+@media(max-width:1500px) {
     .eyes-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr))
     }
@@ -930,7 +854,7 @@ td.numeric {
     }
 
     main {
-        padding: 28px 0 36px
+        padding: 0 0 36px
     }
 
     .eyes-grid {
@@ -969,7 +893,8 @@ td.numeric {
 
 @media(max-width:760px) {
     .app {
-        --page-gutter: 17px
+        --page-gutter: 17px;
+        --card-gap: 16px
     }
     .topbar {
         padding: 0 16px;
@@ -996,25 +921,11 @@ td.numeric {
     }
 
     main {
-        padding: 25px 0 32px
-    }
-
-    h1 {
-        font-size: 34px;
-        margin-top: 0
-    }
-
-    .device-badge {
-        display: none
-    }
-
-    .page-heading {
-        margin-bottom: 20px
+        padding: 0 0 32px
     }
 
     .visual-grid {
-        grid-template-columns: 1fr;
-        gap: 15px
+        grid-template-columns: 1fr
     }
 
     .scene-panel {
@@ -1032,8 +943,7 @@ td.numeric {
 
     .eyes-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        padding: 0 12px 12px
+        padding: 2px 12px 12px
     }
 
     .eye-card {
@@ -1043,7 +953,7 @@ td.numeric {
 
     .resource-grid {
         grid-template-columns: 1fr 1fr;
-        gap: 25px
+        gap: var(--card-gap)
     }
 
     .resource {

@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Settings } from "./Settings";
+import { EyePreview } from "./EyePreview";
 import { useTelemetry } from "./useTelemetry";
 import type { Eye, Telemetry } from "./types";
 
 const Scene = lazy(() => import("./Scene").then((m) => ({ default: m.Scene })));
-const rgb = (c: number[] = [115, 115, 115]) => `rgb(${c.join(",")})`;
 const number = (value: number | null | undefined, digits = 1) =>
   value == null ? "—" : value.toFixed(digits);
 const memory = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -60,7 +60,7 @@ function Camera({ state }: { state: Telemetry | null }) {
             <span>
               {simulation ? "No camera in this source"
                 : available ? "Waiting for fresh camera frames"
-                : "Waiting for main.py or demo.py"}
+                : "Waiting for main.py (live or --demo)"}
             </span>
           </div>
         )}
@@ -99,43 +99,28 @@ function EyeCard({
   const opening = Math.max(0, Math.min(1, eye?.eye_lid ?? 0.85));
   const [failed, setFailed] = useState("");
   return (
-    <article
-      className="eye-card"
-      style={{ "--eye-color": rgb(eye?.iris_color) } as React.CSSProperties}
-    >
+    <article className="eye-card">
       <div className="eye-card-heading">
-        <span>
-          Eye <b>{String(id).padStart(2, "0")}</b>
-        </span>
-        <span
-          className="reachability"
-          title={`${health?.address ?? ""} · Application and motor health unknown`}
-        >
-          <Dot good={health?.status === "reachable"} />
-          {health?.status ?? "unknown"}
-        </span>
-      </div>
-      <div className="eye-preview">
-        <div className="eye-shape">
-          <div className="iris">
-            <div className="pupil" />
-          </div>
-          {opening < 1 && (
-            <svg className="eyelids" viewBox="0 0 100 100" aria-hidden="true">
-              <path d={`M 0 0 H 100 V 50 A 50 ${50 * opening} 0 0 0 0 50 Z`} />
-              <path d={`M 0 100 H 100 V 50 A 50 ${50 * opening} 0 0 1 0 50 Z`} />
-            </svg>
-          )}
+        <div className="eye-identity">
+          <span>
+            Eye <b>{String(id).padStart(2, "0")}</b>
+          </span>
+          <span
+            className="reachability"
+            title={`${health?.address ?? ""} · Application and motor health unknown`}
+          >
+            <Dot good={health?.status === "reachable"} />
+            {health?.status === "reachable" ? "online"
+              : health?.status === "unreachable" ? "offline"
+              : (health?.status ?? "unknown")}
+          </span>
         </div>
-        <span
-          className="eye-target"
-          style={{ background: rgb(eye?.target_iris_color) }}
-          title="Target iris color"
-        />
-      </div>
-      <div className="assignment">
-        <span className="eyebrow">ASSIGNED FACE</span>
-        <strong>{assigned ? `#${eye?.face_id}` : "Unassigned"}</strong>
+        <div className="eye-preview">
+          <EyePreview opening={opening} irisColor={eye?.iris_color} />
+        </div>
+        <span className="assignment" title={assigned ? `Face #${eye?.face_id}` : "No face assigned"}>
+          {assigned ? `Face #${eye?.face_id}` : "Face —"}
+        </span>
       </div>
       <div className="face-crop">
         {url && failed !== url ? (
@@ -291,8 +276,39 @@ export default function App() {
         </span>
       </header>
       <main>
-        <div className="page-heading">
-          <h1>{page === "dashboard" ? "System Overview" : "Settings"}</h1>
+        <div className="status-strip">
+          <span>
+            <Dot good={!!live} />
+            Application{" "}
+            <b>
+              {state?.controller.restarting
+                ? "Restarting"
+                : (state?.controller.status ?? "Connecting")}
+            </b>
+          </span>
+          <span>
+            <Dot good={state?.camera.status === "streaming"} />
+            Camera <b>{state?.camera.status ?? "Waiting"}</b>
+          </span>
+          <span>
+            Eyes online{" "}
+            <b>
+              {state?.eye_health.filter((e) => e.status === "reachable")
+                .length ?? 0}{" "}
+              / 6
+            </b>
+          </span>
+          <span>
+            Publication <b>{number(live ? state?.timing?.publish_hz : null)} Hz</b>
+          </span>
+          <span>
+            Telemetry age{" "}
+            <b>
+              {state?.controller.age_s == null
+                ? "—"
+                : `${Math.round(state.controller.age_s * 1000)} ms`}
+            </b>
+          </span>
           <span className="device-badge">
             {live ? state?.source === "demo" ? "AEYES / SIMULATION" : "AEYES / LIVE CAMERA" : "AEYES / WAITING"}
           </span>
@@ -309,43 +325,9 @@ export default function App() {
             {connected && !live && (
               <div className="notice" role="status">
                 {state?.controller.status === "stale" ? "Application telemetry stopped. " : ""}
-                Waiting for main.py or demo.py to publish data.
+                Waiting for main.py (live or --demo) to publish data.
               </div>
             )}
-            <div className="status-strip">
-              <span>
-                <Dot good={!!live} />
-                Application{" "}
-                <b>
-                  {state?.controller.restarting
-                    ? "Restarting"
-                    : (state?.controller.status ?? "Connecting")}
-                </b>
-              </span>
-              <span>
-                <Dot good={state?.camera.status === "streaming"} />
-                Camera <b>{state?.camera.status ?? "Waiting"}</b>
-              </span>
-              <span>
-                Eyes reachable{" "}
-                <b>
-                  {state?.eye_health.filter((e) => e.status === "reachable")
-                    .length ?? 0}{" "}
-                  / 6
-                </b>
-              </span>
-              <span>
-                Publication <b>{number(live ? state?.timing?.publish_hz : null)} Hz</b>
-              </span>
-              <span>
-                Telemetry age{" "}
-                <b>
-                  {state?.controller.age_s == null
-                    ? "—"
-                    : `${Math.round(state.controller.age_s * 1000)} ms`}
-                </b>
-              </span>
-            </div>
             <div className={`visual-grid ${!live ? "stale" : ""}`}>
               <Camera state={live ? state : null} />
               <Suspense

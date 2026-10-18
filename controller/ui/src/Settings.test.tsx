@@ -57,7 +57,7 @@ describe('settings workflow', () => {
     fireEvent.click(screen.getByText('Save',{exact:true}));
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     expect(fetcher.mock.calls[1][0]).toBe('/api/config');
-    expect(screen.getByText(/Restart demo.py in its terminal/)).toBeTruthy();
+    expect(screen.getByText(/Restart main.py --demo in its terminal/)).toBeTruthy();
   });
   it('waits for a new session reporting the saved revision before confirming restart', async () => {
     const initial={...config(),restart_available:true};
@@ -84,6 +84,6 @@ describe('settings workflow', () => {
     expect(screen.getByText('No active application')).toBeTruthy();
     rerender(<Settings state={{...before,source:'demo',controller:{...before.controller,restart_available:false}}}/>);
     expect((screen.getByText('Save and restart') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Restart demo.py in its terminal/)).toBeTruthy();
+    expect(screen.getByText(/Restart main.py --demo in its terminal/)).toBeTruthy();
   });
 });

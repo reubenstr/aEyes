@@ -185,7 +185,7 @@ def create_app(*, state=None, store=None, service=None, start_workers=True):
             if not service.enabled:
                 raise HTTPException(503, "Restart requires the installed service integration")
             if state.describe()["source"] == "demo":
-                raise HTTPException(409, "Restart controls main.service. Restart demo.py in its terminal instead.")
+                raise HTTPException(409, "Restart controls main.service. Restart main.py --demo in its terminal instead.")
             if service.restarting:
                 raise HTTPException(409, "A restart is already in progress")
             if revision(await asyncio.to_thread(store.read)) != body.revision:
