@@ -118,6 +118,13 @@ Open **http://localhost:5173/**. Vite proxies `/api`, including MJPEG and WebSoc
 to the backend on port 8080. Changes to frontend code update automatically, and
 `--reload` reloads backend code. Settings are at **http://localhost:5173/settings**.
 
+Overview uses the spatial view as its background, with individual eye cards 1–3
+on the left and 4–6 on the right. The camera sits above tracking along the bottom.
+The info and plot-control cards share the top of the middle column, between the
+two eye-card columns.
+On narrow screens, the panels stack for readability. System resources have their
+own **System** page at **http://localhost:5173/system**, available from the navbar.
+
 The dashboard identifies this source as **Simulation** and shows the application's
 tracked faces, assignments, gaze lines, trajectories, colors, and commanded angles.
 Camera preview and face crops show **No camera in this source**; images are not

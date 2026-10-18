@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Trails, toBase } from "./data";
@@ -65,7 +66,11 @@ function dispose(object: THREE.Object3D) {
   });
 }
 
-export function Scene({ state }: { state: Telemetry | null }) {
+export function Scene({ state, background = false, controlsContainer }: {
+  state: Telemetry | null;
+  background?: boolean;
+  controlsContainer?: HTMLElement | null;
+}) {
   const host = useRef<HTMLDivElement>(null),
     latest = useRef(state);
   const [error, setError] = useState(""),
@@ -315,8 +320,8 @@ export function Scene({ state }: { state: Telemetry | null }) {
       element.replaceChildren();
     };
   }, []);
-  return (
-    <section className="panel scene-panel">
+  const toolbar = (
+    <>
       <div className="panel-title">
         <h2>Spatial View</h2>
         <div className="scene-tools">
@@ -331,13 +336,6 @@ export function Scene({ state }: { state: Telemetry | null }) {
           </button>
         </div>
       </div>
-      <div
-        ref={host}
-        className="scene-canvas"
-        role="img"
-        aria-label="3D eye positions, face trajectories and assignment lines"
-      />
-      {error && <div className="scene-error">{error}</div>}
       <div className="scene-legend">
         <span>
           <i className="dot accent" />
@@ -346,6 +344,18 @@ export function Scene({ state }: { state: Telemetry | null }) {
         <span>Drag to orbit · Scroll to zoom</span>
         <span>X forward / Y left / Z up · m</span>
       </div>
+    </>
+  );
+  return (
+    <section className={`scene-panel ${background ? "scene-background" : "panel"}`}>
+      {controlsContainer ? createPortal(toolbar, controlsContainer) : toolbar}
+      <div
+        ref={host}
+        className="scene-canvas"
+        role="img"
+        aria-label="3D eye positions, face trajectories and assignment lines"
+      />
+      {error && <div className="scene-error">{error}</div>}
     </section>
   );
 }

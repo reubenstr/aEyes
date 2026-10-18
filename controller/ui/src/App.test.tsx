@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 import { useTelemetry } from './useTelemetry';
 import type { Telemetry } from './types';
@@ -21,9 +21,33 @@ const state = (): Telemetry => ({
   camera: { available: false, status: 'unavailable', age_s: null, video_age_s: null, capture_key: null },
 });
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); history.replaceState({}, '', '/'); });
 
 describe('application dashboard', () => {
+  it('opens system resources separately and returns to the overview with browser back', async () => {
+    vi.mocked(useTelemetry).mockReturnValue({ state: state(), connected: true });
+    render(<App />);
+    expect(screen.queryByRole('heading', {name:'System Resources | Raspberry Pi'})).toBeNull();
+    fireEvent.click(screen.getByRole('link', {name:'System'}));
+    expect(location.pathname).toBe('/system');
+    expect(screen.getByRole('heading', {name:'System Resources | Raspberry Pi'})).toBeTruthy();
+    expect(screen.queryByRole('article', {name:'Eye 01'})).toBeNull();
+    expect(screen.getByRole('link', {name:'System'}).getAttribute('aria-current')).toBe('page');
+    act(() => history.back());
+    await waitFor(() => expect(screen.getByRole('article', {name:'Eye 01'})).toBeTruthy());
+    expect(location.pathname).toBe('/');
+    expect(screen.queryByRole('heading', {name:'System Resources | Raspberry Pi'})).toBeNull();
+  });
+
+  it('loads the system page directly without mounting overview panels', () => {
+    history.replaceState({}, '', '/system');
+    vi.mocked(useTelemetry).mockReturnValue({ state: state(), connected: true });
+    render(<App />);
+    expect(screen.getByRole('heading', {name:'System Resources | Raspberry Pi'})).toBeTruthy();
+    expect(screen.queryByRole('complementary', {name:'Eyes 1 to 3'})).toBeNull();
+    expect(screen.getByText('AEYES / SIMULATION')).toBeTruthy();
+  });
+
   it('waits for an application without showing generated data or requesting camera images', () => {
     vi.mocked(useTelemetry).mockReturnValue({ state: null, connected: true });
     render(<App />);
@@ -44,6 +68,14 @@ describe('application dashboard', () => {
     const card = screen.getByText('online').closest('article')!;
     expect(within(card).getByText('Face #42')).toBeTruthy();
     expect(within(card).getByText('12.3')).toBeTruthy();
+    expect(within(screen.getByRole('complementary', {name:'Eyes 1 to 3'})).getAllByRole('article').map(card => card.getAttribute('aria-label')))
+      .toEqual(['Eye 01', 'Eye 02', 'Eye 03']);
+    expect(within(screen.getByRole('complementary', {name:'Eyes 4 to 6'})).getAllByRole('article').map(card => card.getAttribute('aria-label')))
+      .toEqual(['Eye 04', 'Eye 05', 'Eye 06']);
+    const camera = screen.getByRole('region', {name:'Camera'});
+    expect(within(camera).getByText('SIMULATION / NO CAMERA')).toBeTruthy();
+    expect(within(camera).getByText('Not available')).toBeTruthy();
+    expect(screen.getByRole('columnheader', {name:'Eyes'})).toBeTruthy();
   });
 
   it('hides assignments, positions, commands, and rates when application telemetry is stale', () => {
