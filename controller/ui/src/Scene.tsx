@@ -136,12 +136,16 @@ export function Scene({ state }: { state: Telemetry | null }) {
         ),
       );
     }
-    function update(s: Telemetry) {
+    function update(s: Telemetry | null) {
       for (const child of [...dynamic.children]) {
         dynamic.remove(child);
         dispose(child);
       }
-      if (s.controller.status !== "running") return;
+      if (!s || s.controller.status !== "running") {
+        trails.points.clear();
+        trails.capture = undefined;
+        return;
+      }
       trails.update(s);
       const cameraPosition = vector(s.geometry.camera);
       const cameraIcon = new THREE.Mesh(
@@ -193,14 +197,15 @@ export function Scene({ state }: { state: Telemetry | null }) {
         group.quaternion.setFromRotationMatrix(
           new THREE.Matrix4().makeBasis(horizontal, up, direction),
         );
+        const radius = 0.065,
+          opening = THREE.MathUtils.clamp(eye?.eye_lid ?? 0.85, 0, 1);
         const sclera = new THREE.Mesh(
-          new THREE.CircleGeometry(0.065, 32),
+          new THREE.CircleGeometry(radius, 32),
           new THREE.MeshBasicMaterial({
             color: "#dddddd",
             side: THREE.DoubleSide,
           }),
         );
-        sclera.scale.y = Math.max(0.07, (eye?.eye_lid ?? 0.85) * 0.7);
         group.add(sclera);
         const iris = new THREE.Mesh(
           new THREE.CircleGeometry(0.033, 24),
@@ -210,7 +215,6 @@ export function Scene({ state }: { state: Telemetry | null }) {
           }),
         );
         iris.position.z = 0.001;
-        iris.scale.y = sclera.scale.y;
         group.add(iris);
         const pupil = new THREE.Mesh(
           new THREE.CircleGeometry(0.015, 16),
@@ -220,8 +224,31 @@ export function Scene({ state }: { state: Telemetry | null }) {
           }),
         );
         pupil.position.z = 0.002;
-        pupil.scale.y = sclera.scale.y;
         group.add(pupil);
+        // Cover the fixed eye with curved lids; the iris and pupil stay circular.
+        if (opening < 1) {
+          for (const upper of [true, false]) {
+            const lid = new THREE.Shape();
+            lid.absarc(0, 0, radius, Math.PI, upper ? 0 : 2 * Math.PI, upper);
+            lid.absellipse(0, 0, radius, radius * opening, 0, upper ? Math.PI : -Math.PI, !upper);
+            lid.closePath();
+            const overlay = new THREE.Mesh(
+              new THREE.ShapeGeometry(lid, 32),
+              new THREE.MeshBasicMaterial({ color: "#353535", side: THREE.DoubleSide }),
+            );
+            overlay.position.z = 0.003;
+            group.add(overlay);
+            const edge = new THREE.EllipseCurve(
+              0, 0, radius, radius * opening, 0, upper ? Math.PI : -Math.PI, !upper,
+            );
+            group.add(new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints(edge.getPoints(32).map(
+                (p) => new THREE.Vector3(p.x, p.y, 0.004),
+              )),
+              new THREE.LineBasicMaterial({ color: "#1b1b1b" }),
+            ));
+          }
+        }
         dynamic.add(group);
         const name = label(`E${cfg.eye_id}`);
         name.position.copy(pivot).add(new THREE.Vector3(0, 0, -0.12));
@@ -266,15 +293,14 @@ export function Scene({ state }: { state: Telemetry | null }) {
       frame = requestAnimationFrame(animate);
       const s = latest.current;
       if (
-        s &&
-        (s.timestamp !== lastTimestamp ||
+        (s?.timestamp !== lastTimestamp ||
           trailsVisible.current !== lastVisibility ||
-          s.controller.status !== lastStatus)
+          s?.controller.status !== lastStatus)
       ) {
         update(s);
-        lastTimestamp = s.timestamp;
+        lastTimestamp = s?.timestamp;
         lastVisibility = trailsVisible.current;
-        lastStatus = s.controller.status;
+        lastStatus = s?.controller.status;
       }
       controls.update();
       renderer.render(scene, camera);

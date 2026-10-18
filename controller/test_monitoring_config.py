@@ -85,7 +85,7 @@ class SettingsTests(unittest.TestCase):
     def test_api_settings_active_saved_conflicts_and_validation(self):
         state = MonitorState()
         state.source = {'active_config': self.values, 'timestamp': time.monotonic()}
-        with self.client(state=state, demo=False, service=ServiceControl(False)) as client:
+        with self.client(state=state, service=ServiceControl(False)) as client:
             config = client.get('/api/config').json()
             self.assertFalse(config['pending_restart'])
             self.assertEqual(config['fields']['eye_manager']['vein_seed']['nullable'], True)
@@ -99,23 +99,49 @@ class SettingsTests(unittest.TestCase):
             raw['system']['refresh_rate_hz'] = False
             self.assertEqual(client.put('/api/config', json={'values': raw, 'revision': response.json()['revision']}).status_code, 422)
 
-    def test_demo_and_cross_origin_writes_are_rejected(self):
+    def test_cross_origin_writes_are_rejected(self):
         payload = {'values': self.values, 'revision': revision(self.values)}
-        with self.client(demo=True) as client:
-            self.assertEqual(client.put('/api/config', json=payload).status_code, 403)
-            self.assertEqual(client.post('/api/controller/restart', json={'revision': payload['revision']}).status_code, 403)
-        with self.client(demo=False) as client:
+        with self.client() as client:
             self.assertEqual(client.put('/api/config', json=payload, headers={'Origin':'http://elsewhere.test'}).status_code, 403)
             self.assertEqual(client.put('/api/config', json=payload, headers={'Origin':'http://testserver'}).status_code, 200)
 
+    def test_demo_source_can_save_settings_but_cannot_restart_main_service(self):
+        state = MonitorState()
+        state.source = {'source':'demo', 'active_config':self.values, 'timestamp':time.monotonic(),
+                        'camera_available':False}
+        service = ServiceControl(True)
+        service.restart = AsyncMock()
+        with self.client(state=state, service=service) as client:
+            config = client.get('/api/config').json()
+            self.assertEqual(config['source'], 'demo')
+            self.assertFalse(config['restart_available'])
+            raw = deepcopy(self.values)
+            raw['system']['refresh_rate_hz'] = 10
+            response = client.put('/api/config', json={'values':raw, 'revision':config['revision']})
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()['pending_restart'])
+            restart = client.post('/api/controller/restart', json={'revision':response.json()['revision']})
+            self.assertEqual(restart.status_code, 409)
+            self.assertIn('demo.py', restart.json()['detail'])
+        service.restart.assert_not_awaited()
+
+    def test_active_configuration_is_unavailable_after_application_feed_stops(self):
+        state = MonitorState()
+        state.source = {'source':'main', 'active_config':self.values, 'timestamp':time.monotonic()-2}
+        with self.client(state=state) as client:
+            config = client.get('/api/config').json()
+            self.assertIsNone(config['active'])
+            self.assertIsNone(config['active_revision'])
+            self.assertEqual(revision(config['saved']), revision(self.values))
+
     def test_restart_requires_installed_integration_and_current_revision(self):
-        with self.client(demo=False, service=ServiceControl(False)) as client:
+        with self.client(service=ServiceControl(False)) as client:
             self.assertEqual(client.post('/api/controller/restart', json={'revision': revision(self.values)}).status_code, 503)
         service = ServiceControl(True)
         async def fake_restart():
             service.restarting = False
         service.restart = AsyncMock(side_effect=fake_restart)
-        with self.client(demo=False, service=service) as client:
+        with self.client(service=service) as client:
             self.assertEqual(client.post('/api/controller/restart', json={'revision':'old'}).status_code, 409)
             self.assertEqual(client.post('/api/controller/restart', json={'revision':revision(self.values)}).status_code, 202)
         service.restart.assert_awaited_once()

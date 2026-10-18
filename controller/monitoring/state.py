@@ -55,7 +55,7 @@ class MonitorState:
         self.video.set_session(session)
         self.video.observe(session, snapshot.get("observation"))
 
-    def describe(self, service=None, demo=False, now=None):
+    def describe(self, service=None, now=None):
         now = time.monotonic() if now is None else now
         with self.lock:
             source = deepcopy(self.source) if self.source else {}
@@ -68,36 +68,47 @@ class MonitorState:
             max(0.0, now - image_timestamp) if image_timestamp is not None else None
         )
         fresh = source_age is not None and source_age <= STALE_SECONDS
+        source_kind = source.get("source", "main") if source else None
+        camera_available = bool(source and source.get("camera_available", True))
+        if compute and not fresh:
+            compute["process"] = None
         for face in source.get("faces", []):
             face["observation_age_s"] = max(0.0, now - face["last_seen"])
             face["depth_age_s"] = max(0.0, now - face["last_depth_seen"])
         return {
             **source,
             "schema_version": SCHEMA_VERSION,
-            "demo": demo,
+            "source": source_kind,
+            "pid": source.get("pid") if fresh else None,
             "geometry": source.get("geometry") or geometry(),
-            "faces": source.get("faces", []),
-            "eyes": source.get("eyes", []),
-            "crops": self.video.crop_metadata(now) if fresh else {},
+            "active_config": source.get("active_config") if fresh else None,
+            "config_revision": source.get("config_revision") if fresh else None,
+            "faces": source.get("faces", []) if fresh else [],
+            "eyes": source.get("eyes", []) if fresh else [],
+            "timing": source.get("timing") if fresh else None,
+            "crops": self.video.crop_metadata(now) if fresh and camera_available else {},
             "system": compute,
             "eye_health": health,
             "controller": {
                 "status": "running" if fresh else "stale" if source else "offline",
                 "age_s": source_age,
                 "service": service.status if service else "unknown",
-                "restart_available": bool(service and service.enabled and not demo),
+                "restart_available": bool(service and service.enabled and source_kind != "demo"),
                 "restarting": bool(service and service.restarting),
                 "restart_error": service.error if service else None,
             },
             "camera": {
-                "status": "streaming"
+                "available": camera_available,
+                "status": "unavailable"
+                if source and not camera_available
+                else "streaming"
                 if fresh and video_age is not None and video_age <= 1
                 else "stale"
                 if source
                 else "offline",
-                "age_s": capture_age,
-                "video_age_s": video_age,
-                "capture_key": observation.get("capture_key") if observation else None,
+                "age_s": capture_age if fresh and camera_available else None,
+                "video_age_s": video_age if fresh and camera_available else None,
+                "capture_key": observation.get("capture_key") if observation and fresh and camera_available else None,
             },
         }
 

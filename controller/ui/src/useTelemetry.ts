@@ -21,7 +21,7 @@ export function useTelemetry() {
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
         if (disposed) return;
-        setConnected(false); retry = setTimeout(connect, reconnectDelay(attempt++));
+        setConnected(false); setState(null); retry = setTimeout(connect, reconnectDelay(attempt++));
       };
     }
     connect();

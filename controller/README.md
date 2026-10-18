@@ -87,15 +87,27 @@ Install Node 24 using your normal Node version manager. To bootstrap the pinned
 Yarn version if needed, run `npm install --global yarn@1.22.22`; use Yarn for all
 project package installation and builds.
 
-## Hardware-free dashboard development
+## Dashboard development with the simulation
 
-Start the demo backend in terminal 1, from `controller/`:
+Start the monitoring API in terminal 1, from `controller/`:
 
 ```bash
-.venv/bin/python -m monitoring --demo --reload --host 127.0.0.1 --port 8080
+.venv/bin/python -m monitoring --reload --host 127.0.0.1 --port 8080
 ```
 
-Start Vite in terminal 2, from `controller/ui/`:
+Start the existing application demo in terminal 2, from `controller/`:
+
+```bash
+.venv/bin/python demo.py
+```
+
+**The demo publishes commands to physical eyes.** It requires a desktop/display
+for its existing Qt visualizer, but does not open a camera. It runs synthetic
+detections through the real tracker and eye manager, and publishes their results
+to the same monitoring feed as `main.py`. Tracks still need confirmation before
+they become visible or receive eyes (30 matched observations by default).
+
+Start Vite in terminal 3, from `controller/ui/`:
 
 ```bash
 yarn dev --host 127.0.0.1 --port 5173 --strictPort
@@ -105,11 +117,26 @@ Open **http://localhost:5173/**. Vite proxies `/api`, including MJPEG and WebSoc
 to the backend on port 8080. Changes to frontend code update automatically, and
 `--reload` reloads backend code. Settings are at **http://localhost:5173/settings**.
 
-Demo mode generates synthetic face images, assignments, gaze lines and trajectories.
-The CPU/RAM readings describe the host running the backend. Eye reachability stays
-unknown; synthetic assignments do not establish physical eye health. Saving
-settings and restarting services are disabled in demo mode. It does not import the
-camera SDK or publish commands to eyes.
+The dashboard identifies this source as **Simulation** and shows the application's
+tracked faces, assignments, gaze lines, trajectories, colors, and commanded angles.
+Camera preview and face crops show **No camera in this source**; images are not
+generated for the dashboard. Settings can be saved, then applied by restarting
+`demo.py` in its terminal. **Save and restart** is unavailable for this source
+because service control only restarts the live controller's `main.service`.
+
+The monitoring API always listens for application telemetry. It has no separate
+`--demo` mode or synthetic data generator. Run either `main.py` or `demo.py`, one
+at a time: both bind the eye-command port (9000 by default), and the local
+monitoring feed uses port 9101. Stop an installed `main.service` before running
+the demo manually.
+
+With neither application publishing, the dashboard waits for data. After roughly
+one second without fresh telemetry, tracking, assignments, command values, rates,
+and active settings are cleared. A lost browser/backend connection also clears
+the displayed data and reconnects automatically. CPU/RAM readings describe the
+host running the backend, and eye reachability probes continue while the backend
+is running, independently of either application. Reachability does not establish
+application or motor health.
 
 ## Live camera development
 
@@ -131,12 +158,16 @@ Start the monitoring API in terminal 1, from `controller/`:
 Start the live controller in terminal 2, from `controller/`:
 
 ```bash
-.venv/bin/python main.py --monitor
+.venv/bin/python main.py
 ```
 
-**The live controller publishes commands to physical eyes.** Monitoring is optional;
-without `--monitor`, the extra preview output and monitoring producer are disabled.
-Capture recording remains available: `main.py --monitor --record /tmp/captures.jsonl`.
+**The live controller publishes commands to physical eyes.** Dashboard telemetry
+and camera preview are enabled by default, including through `main.sh` and the
+installed controller service. Use `main.py --no-monitor` to disable the extra
+preview output and monitoring producer. The existing `--monitor` flag remains
+accepted. Capture recording remains available: `main.py --record /tmp/captures.jsonl`.
+The dashboard labels this source **Live camera**. The monitoring API and browser
+can remain open while you stop one application and start the other.
 
 Start Vite in terminal 3, from `controller/ui/`:
 
@@ -153,14 +184,17 @@ bind Vite to `0.0.0.0` and open that computer's address on port 5173.
 The Settings screen edits every section of `params.yaml`; physical geometry in
 `config.py` is read-only. `params.defaults.yaml` is the versioned reset baseline.
 Reset loads defaults into the form. Save validates and atomically writes settings,
-retaining `params.yaml.bak`; changes take effect on the next controller startup.
-Saved and active configurations are shown separately. Stale browser revisions are
+retaining `params.yaml.bak`; changes take effect on the next application startup.
+Saved and active configurations are shown separately; active values are available
+only while fresh application telemetry is arriving. Stale browser revisions are
 rejected rather than overwriting another save.
 
 **Save and restart** is available through the installed monitor service and restarts
-only the controller's `main.service`. The web backend remains online. In manual
-development, save and restart `main.py` in its terminal instead. Publisher
-address/port changes also need matching eye-side network settings. The monitor's
+only the controller's `main.service`. It is disabled while the telemetry source is
+`demo.py`, including after its feed goes stale. The web backend remains online.
+In manual development, save and restart `main.py` or `demo.py` in its terminal
+instead. Publisher address/port changes also need matching eye-side network
+settings. The monitor's
 HTTP/telemetry ports are reserved against publisher collisions.
 
 ## Build, test and inspect
@@ -185,7 +219,8 @@ curl http://127.0.0.1:8080/api/health
 curl http://127.0.0.1:8080/api/state
 ```
 
-The tests require no camera, display, GPIO, CAN, or reachable Pi. The live OAK
+The tests require no camera, display, GPIO, CAN, or reachable Pi. Backend-only
+checks report the application offline until a producer starts. The live OAK
 preview/detection alignment, sustained 15 Hz publication under load, camera
 interruption/reconnection and physical eye reachability still require Pi validation.
 
@@ -240,8 +275,13 @@ publication:
 .venv/bin/python visual.py
 ```
 
-The existing Qt demo **publishes commands to physical eyes**:
+The existing Qt demo **publishes commands to physical eyes** and dashboard telemetry:
 
 ```bash
 .venv/bin/python demo.py
 ```
+
+Use it with the same monitoring API and browser described above. Its tracking and
+eye state appear in the dashboard; camera images and face crops are unavailable.
+Pausing the Qt demo stops its updates, so dashboard telemetry becomes stale until
+it resumes.

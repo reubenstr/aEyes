@@ -3,13 +3,13 @@ import { decodeTelemetry, reconnectDelay, toBase, Trails } from './data';
 import type { Telemetry } from './types';
 
 export const sample = (): Telemetry => ({
-  schema_version: 1, session_id: 'one', demo: true,
+  schema_version: 1, session_id: 'one', timestamp: 1, source: 'main',
   geometry: { camera: { x: .04375, y: 0, z: 0, horizontal_fov: 127, vertical_fov: 79.5 }, eyes: [], coordinates: '' },
   faces: [{ id: 0, visible: true, status: 'confirmed', is_static: false, position: {x:2,y:0,z:0},
     confidence: .9, depth_age_s:0, observation_age_s:0, velocity:[0,0,0], hits:30, missing_frames:0 }],
   eyes: [], crops: {}, eye_health: [], system: null,
   controller: { status:'running', age_s:0, service:'unknown', restart_available:false, restarting:false, restart_error:null },
-  camera: { status:'streaming', age_s:0, video_age_s:0, capture_key:'1-1000000' },
+  camera: { available:true, status:'streaming', age_s:0, video_age_s:0, capture_key:'1-1000000' },
 });
 
 describe('telemetry and geometry', () => {
@@ -30,5 +30,12 @@ describe('telemetry and geometry', () => {
     expect(store.points.get(0)?.length).toBe(300);
     state.session_id='two'; store.update(state); expect(store.points.get(0)?.length).toBe(1);
     state.faces=[]; store.update(state); expect(store.points.size).toBe(0);
+  });
+  it('uses application snapshots for simulation trails without camera frames', () => {
+    const store = new Trails(), state = sample();
+    state.source = 'demo'; state.camera.available = false; state.camera.capture_key = null;
+    store.update(state); store.update(state); expect(store.points.get(0)?.length).toBe(1);
+    state.timestamp = 2; store.update(state); expect(store.points.get(0)?.length).toBe(2);
+    state.controller.status = 'stale'; store.update(state); expect(store.points.size).toBe(0);
   });
 });

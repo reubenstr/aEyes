@@ -21,16 +21,18 @@ export const toBase = (p: Vec3, geometry: Geometry): Vec3 => ({
 
 export class Trails {
   session?: string;
-  capture?: string | null;
+  capture?: string | number | null;
   points = new Map<number, Vec3[]>();
   update(state: Telemetry) {
-    if (state.session_id !== this.session) {
+    if (state.session_id !== this.session || state.controller.status !== 'running') {
       this.points.clear(); this.capture = undefined; this.session = state.session_id;
     }
+    if (state.controller.status !== 'running') return;
     const visible = state.faces.filter(f => f.visible);
     for (const id of this.points.keys()) if (!visible.some(f => f.id === id)) this.points.delete(id);
-    if (!state.camera.capture_key || state.camera.capture_key === this.capture) return;
-    this.capture = state.camera.capture_key;
+    const capture = state.camera.capture_key ?? state.timestamp;
+    if (capture == null || capture === this.capture) return;
+    this.capture = capture;
     for (const face of visible) {
       const history = this.points.get(face.id) ?? [];
       history.push(toBase(face.position, state.geometry));

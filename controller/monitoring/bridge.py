@@ -15,7 +15,8 @@ log = logging.getLogger(__name__)
 
 
 class MonitorBridge:
-    def __init__(self, preview_queue=None, endpoint=ENDPOINT, active_config=None):
+    def __init__(self, preview_queue=None, endpoint=ENDPOINT, active_config=None,
+                 source="main", camera_available=True):
         self.preview_queue = preview_queue
         self.endpoint = endpoint
         self.session = uuid.uuid4().hex
@@ -24,6 +25,8 @@ class MonitorBridge:
             "schema_version": SCHEMA_VERSION,
             "session_id": self.session,
             "pid": os.getpid(),
+            "source": source,
+            "camera_available": camera_available,
             "geometry": geometry(),
             "active_config": self.active,
             "config_revision": revision(self.active),

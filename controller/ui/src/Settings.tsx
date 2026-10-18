@@ -20,7 +20,7 @@ export function Settings({ state }: { state: Telemetry | null }) {
   useEffect(() => {
     if (!waiting) return;
     if (state?.controller.restart_error) { setError(state.controller.restart_error); setWaiting(null); return; }
-    if (state?.controller.status === 'running' && state.session_id !== waiting.session && state.config_revision === waiting.revision) {
+    if (state?.source === 'main' && state.controller.status === 'running' && state.session_id !== waiting.session && state.config_revision === waiting.revision) {
       setWaiting(null); setMessage('Controller restarted. Saved settings are now active.');
       api<ConfigDescription>('/api/config').then(setConfig).catch(e => setError(e.message));
     }
@@ -31,15 +31,19 @@ export function Settings({ state }: { state: Telemetry | null }) {
   const dirty = JSON.stringify(draft) !== JSON.stringify(config.saved);
   const invalid = Object.values(draft).some(section => Object.values(section).some(v =>
     typeof v === 'number' ? !Number.isFinite(v) : Array.isArray(v) && v.some(n => !Number.isFinite(n))));
-  const pending = state?.config_revision ? state.config_revision !== config.revision : config.pending_restart;
-  const disabled = config.demo || busy || Boolean(waiting);
+  const running = state?.controller.status === 'running';
+  const activeValues = running ? state.active_config ?? config.active : null;
+  const pending = running && (state?.config_revision ? state.config_revision !== config.revision : config.pending_restart);
+  const source = state?.source ?? config.source;
+  const restartAvailable = (state?.controller.restart_available ?? config.restart_available) && source !== 'demo';
+  const disabled = busy || Boolean(waiting);
   const update = (section: string, name: string, value: ConfigValue) => setDraft({ ...draft, [section]: { ...draft[section], [name]: value } });
   async function save(restart: boolean) {
     if (!config || !draft) return;
     setBusy(true); setError(''); setMessage('');
     try {
       const saved = await api<ConfigDescription>('/api/config', { method: 'PUT', body: JSON.stringify({ values: draft, revision: config.revision }) });
-      setConfig(saved); setDraft(clone(saved.saved)); setMessage('Settings saved. A controller restart is required.');
+      setConfig(saved); setDraft(clone(saved.saved)); setMessage('Settings saved. Restart the running application to apply them.');
       if (restart) {
         await api('/api/controller/restart', { method: 'POST', body: JSON.stringify({ revision: saved.revision }) });
         setWaiting({ session: state?.session_id, revision: saved.revision, started: Date.now() });
@@ -49,24 +53,24 @@ export function Settings({ state }: { state: Telemetry | null }) {
     finally { setBusy(false); }
   }
   return <div className="settings">
-    <section className="panel settings-intro"><div><h2>Controller Configuration</h2><p>Changes are validated and saved to params.yaml. Restart the controller to apply them.</p></div>
-      <span className={`pill ${pending ? 'warning' : 'good'}`}>{pending ? 'Restart pending' : 'Settings active'}</span></section>
-    {config.demo && <div className="notice">Demo mode · Settings are available to explore. Saving and service restarts are disabled.</div>}
+    <section className="panel settings-intro"><div><h2>Controller Configuration</h2><p>Changes are validated and saved to params.yaml. Restart the running application to apply them.</p></div>
+      <span className={`pill ${pending ? 'warning' : running ? 'good' : ''}`}>{!running ? 'No active application' : pending ? 'Restart pending' : 'Settings active'}</span></section>
+    {source === 'demo' && <div className="notice">Simulation source · Settings can be saved. Restart demo.py in its terminal to apply them.</div>}
     {error && <div className="notice error" role="alert">{error} <button className="subtle" onClick={() => window.location.reload()}>Reload settings</button></div>}
     {message && <div className="notice" role="status">{message}</div>}
     <div className="settings-actions"><span>{dirty ? 'Unsaved changes' : 'Saved configuration'}{waiting ? ' · Restarting…' : ''}</span><div>
       <button disabled={busy || !!waiting} onClick={() => { setDraft(clone(config.defaults)); setMessage('Defaults loaded into the form. Save to persist them.'); }}>Reset to defaults</button>
       <button disabled={!dirty || disabled} onClick={() => { setDraft(clone(config.saved)); setError(''); }}>Discard changes</button>
       <button disabled={disabled || invalid || !dirty} onClick={() => save(false)}>Save</button>
-      <button className="primary" disabled={disabled || invalid || !config.restart_available} onClick={() => save(true)}>{busy ? 'Saving…' : waiting ? 'Restarting…' : 'Save and restart'}</button>
+      <button className="primary" disabled={disabled || invalid || !restartAvailable} onClick={() => save(true)}>{busy ? 'Saving…' : waiting ? 'Restarting…' : 'Save and restart'}</button>
     </div></div>
-    {!config.restart_available && !config.demo && <p className="muted">Restart from this screen requires the installed systemd integration. For manual development, restart main.py in its terminal after saving.</p>}
+    {!restartAvailable && source !== 'demo' && <p className="muted">Restart from this screen requires the installed systemd integration. For manual development, restart main.py in its terminal after saving.</p>}
     {Object.entries(config.fields).map(([section, fields]) => <section className="panel config-section" key={section}>
       <div className="config-heading"><h2>{labels[section] ?? section}</h2>
         {section === 'publisher' && <p>Eye-side networking must be updated separately when publisher settings change.</p>}</div>
       <div className="config-fields">{Object.entries(fields).map(([name, metadata]) => {
         const value = draft[section][name], id = `${section}-${name}`;
-        const active = config.active?.[section]?.[name];
+        const active = activeValues?.[section]?.[name];
         return <div className="config-field" key={name}><div><label htmlFor={id}>{metadata.label}</label><code>{name}</code><small>Active: {format(active)}</small></div>
           {metadata.type === 'boolean' ? <input id={id} type="checkbox" checked={Boolean(value)} disabled={disabled} onChange={e => update(section, name, e.target.checked)} />
             : metadata.type === 'rgb' ? <div className="rgb-input"><span className="swatch" style={{ background: `rgb(${(value as number[]).join(',')})` }} />{(value as number[]).map((channel, i) => <input key={i} aria-label={`${metadata.label} ${['red','green','blue'][i]}`} type="number" min="0" max="255" step="1" value={Number.isFinite(channel) ? channel : ''} disabled={disabled} onChange={e => { const rgb = [...value as number[]]; rgb[i] = e.target.value === '' ? NaN : Number(e.target.value); update(section, name, rgb); }} />)}</div>

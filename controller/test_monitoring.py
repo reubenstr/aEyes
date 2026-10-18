@@ -1,4 +1,5 @@
 import asyncio
+import importlib.util
 from copy import deepcopy
 from dataclasses import asdict
 import json
@@ -34,6 +35,8 @@ def snapshot(now=10., session='one', capture='1-10000000'):
     eyes = [{'eye_id':i, 'face_id':0, 'iris_color':[100,150,200],
              'target_iris_color':[100,150,200]} for i in range(1,7)]
     return {'schema_version':1, 'session_id':session, 'timestamp':now,
+            'source':'main', 'camera_available':True,
+            'timing':{'capture_fps':15., 'publish_hz':15., 'dropped_snapshots':0},
             'faces':[face], 'eyes':eyes, 'geometry':geometry(),
             'observation':{'capture_key':capture, 'timestamp':now, 'sequence':1, 'faces':[face], 'eyes':eyes}}
 
@@ -102,6 +105,22 @@ class StateTests(unittest.TestCase):
         self.assertEqual(state.describe(now=12.)['camera']['status'],'stale')
         self.assertEqual(state.describe(now=12.)['crops'],{})
         self.assertEqual(state.describe(now=12.)['controller']['status'],'stale')
+        stale = state.describe(now=12.)
+        self.assertEqual(stale['faces'], [])
+        self.assertEqual(stale['eyes'], [])
+        self.assertIsNone(stale['timing'])
+        self.assertIsNone(stale['active_config'])
+
+    def test_stale_process_metrics_are_hidden_while_host_health_remains(self):
+        state = MonitorState()
+        state.accept(snapshot())
+        state.compute = {'cpu_percent': 12, 'process': {'pid': 123}}
+        state.health[0]['status'] = 'reachable'
+        current = state.describe(now=12.)
+        self.assertEqual(current['system']['cpu_percent'], 12)
+        self.assertIsNone(current['system']['process'])
+        self.assertEqual(current['eye_health'][0]['status'], 'reachable')
+        self.assertIsNotNone(state.compute['process'])
 
     def test_restart_cannot_be_overwritten_by_retired_session_or_old_timestamp(self):
         state=MonitorState(); state.accept(snapshot())
@@ -110,6 +129,28 @@ class StateTests(unittest.TestCase):
         state.accept(snapshot(now=10.,session='two'))
         self.assertEqual(state.source['session_id'],'two')
         self.assertEqual(state.source['timestamp'],11.)
+
+    def test_switching_between_main_and_demo_resets_video_and_source_capabilities(self):
+        state = MonitorState()
+        state.accept(snapshot())
+        state.video.image({'session_id':'one', 'capture_key':'1-10000000', 'timestamp':10.},
+                          np.zeros((10,10,3), np.uint8))
+        state.video.render(10.)
+        demo = snapshot(now=10.2, session='demo')
+        demo.update(source='demo', camera_available=False, observation=None)
+        state.accept(demo)
+        current = state.describe(now=10.3)
+        self.assertEqual(current['source'], 'demo')
+        self.assertEqual(current['controller']['status'], 'running')
+        self.assertEqual(current['camera']['status'], 'unavailable')
+        self.assertIsNone(current['camera']['capture_key'])
+        self.assertEqual(current['crops'], {})
+        self.assertIsNone(state.video.preview()[1])
+        state.accept(snapshot(now=10.4, session='new-main'))
+        current = state.describe(now=10.5)
+        self.assertEqual(current['source'], 'main')
+        self.assertTrue(current['camera']['available'])
+        self.assertEqual(current['crops'], {})
 
     def test_tracker_diagnostics_are_copied_and_do_not_advance_filters(self):
         tracker=FaceTracker(); tracker.min_hits_to_confirm=1
@@ -134,26 +175,109 @@ class StateTests(unittest.TestCase):
         code="import monitoring.server,sys; assert not set(['depthai','parameters','main','publisher','face_tracker']).intersection(sys.modules)"
         subprocess.run([sys.executable,'-c',code],check=True,cwd=Path(__file__).parent)
 
-    def test_demo_api_and_websocket_produce_fresh_images_without_hardware(self):
-        app=create_app(demo=True)
+    def test_api_and_websocket_wait_for_an_application_without_generating_data(self):
+        app=create_app(start_workers=False)
         with TestClient(app) as client:
             with client.websocket_connect('/api/ws') as ws:
                 data=ws.receive_json()
-                deadline=time.monotonic()+2
-                while data['controller']['status'] != 'running' and time.monotonic()<deadline:
-                    data=ws.receive_json()
-                self.assertTrue(data['demo'])
-                self.assertEqual(data['controller']['status'],'running')
-            deadline=time.monotonic()+1
-            while not app.state.monitor.video.crop_metadata(time.monotonic()) and time.monotonic()<deadline:
-                time.sleep(.02)
+                self.assertIsNone(data['source'])
+                self.assertNotIn('demo', data)
+                self.assertEqual(data['controller']['status'],'offline')
+                self.assertEqual(data['faces'], [])
+                self.assertEqual(data['eyes'], [])
+            self.assertIsNone(app.state.monitor.video.preview()[1])
+            self.assertEqual(client.get('/api/health').json()['status'],'ok')
+
+    def test_api_serves_camera_images_only_from_a_fresh_application(self):
+        state = MonitorState()
+        now = time.monotonic()
+        state.accept(snapshot(now=now))
+        state.video.image({'session_id':'one', 'capture_key':'1-10000000', 'timestamp':now},
+                          np.zeros((100,100,3), np.uint8))
+        state.video.render(now)
+        app = create_app(state=state, start_workers=False)
+        with TestClient(app) as client:
             data=client.get('/api/state').json()
+            self.assertEqual(data['source'], 'main')
+            self.assertEqual(data['camera']['status'], 'streaming')
             self.assertEqual(len(data['eyes']),6)
-            self.assertEqual(len(data['crops']),3)
-            response=client.get(next(iter(data['crops'].values())))
+            self.assertEqual(len(data['crops']),1)
+            crop_url = next(iter(data['crops'].values()))
+            response=client.get(crop_url)
             self.assertEqual(response.status_code,200)
             self.assertEqual(response.headers['content-type'],'image/jpeg')
-            self.assertEqual(client.get('/api/health').json()['status'],'ok')
+            with patch('monitoring.state.time.monotonic', return_value=now+2):
+                self.assertEqual(client.get('/api/state').json()['eyes'], [])
+                self.assertEqual(client.get(crop_url).status_code, 404)
+
+    def test_main_monitoring_is_enabled_by_default_and_can_be_disabled(self):
+        from main import Controller
+        detector = Mock()
+        with patch.dict(sys.modules, {'camera.detector': SimpleNamespace(Detector=detector)}), \
+             patch('main.FaceTracker'), patch('main.EyeManager'), patch('main.Publisher'), \
+             patch('monitoring.bridge.MonitorBridge') as bridge:
+            controller = Controller()
+            detector.assert_called_with(enable_visualizer=False, enable_preview=True)
+            bridge.assert_called_once()
+            controller.shutdown()
+            bridge.reset_mock()
+            controller = Controller(monitor=False)
+            detector.assert_called_with(enable_visualizer=False, enable_preview=False)
+            bridge.assert_not_called()
+            controller.shutdown()
+
+    def test_demo_publishes_real_pipeline_state_on_the_monotonic_clock_and_closes(self):
+        spec = importlib.util.spec_from_file_location('demo_monitor_test', Path(__file__).with_name('demo.py'))
+        demo_module = importlib.util.module_from_spec(spec)
+        qt = SimpleNamespace(QtCore=SimpleNamespace(QObject=object, QTimer=Mock()), QtWidgets=Mock())
+        with patch.dict(sys.modules, {'PySide6': qt, 'visual': SimpleNamespace(PlotWindow=Mock())}):
+            spec.loader.exec_module(demo_module)
+        now = time.monotonic()
+        window = Mock(paused=False)
+        with patch.object(demo_module, 'Publisher') as publisher, \
+             patch('monitoring.bridge.Thread.start'), patch('time.monotonic', return_value=now):
+            demo = demo_module.Demo(window)
+            demo.tracker.min_hits_to_confirm = 1
+            demo._tick()
+            packet = demo.monitor.pending.get_nowait()
+            state = MonitorState()
+            state.accept(packet)
+            current = state.describe(now=now+.01)
+            self.assertEqual(current['source'], 'demo')
+            self.assertEqual(current['controller']['status'], 'running')
+            self.assertEqual(current['camera']['status'], 'unavailable')
+            self.assertFalse(current['camera']['available'])
+            self.assertEqual(current['crops'], {})
+            self.assertTrue(any(face['visible'] for face in current['faces']))
+            self.assertTrue(all(face['observation_age_s'] < .02 for face in current['faces']))
+            commands = publisher.return_value.send.call_args.args[0]
+            for eye in current['eyes']:
+                self.assertEqual(eye['yaw'], commands[eye['eye_id']].yaw)
+                self.assertEqual(eye['pitch'], commands[eye['eye_id']].pitch)
+            window.paused = True
+            demo._tick()
+            self.assertTrue(demo.monitor.pending.empty())
+            self.assertEqual(state.describe(now=now+2)['faces'], [])
+            with patch.object(demo.monitor.worker, 'join'):
+                demo.shutdown()
+            self.assertTrue(demo.monitor.stop_event.is_set())
+            demo.timer.stop.assert_called_once()
+            publisher.return_value.close.assert_called_once()
+
+    def test_demo_monitoring_failure_does_not_interrupt_command_publication(self):
+        spec = importlib.util.spec_from_file_location('demo_failure_test', Path(__file__).with_name('demo.py'))
+        demo_module = importlib.util.module_from_spec(spec)
+        qt = SimpleNamespace(QtCore=SimpleNamespace(QObject=object, QTimer=Mock()), QtWidgets=Mock())
+        with patch.dict(sys.modules, {'PySide6': qt, 'visual': SimpleNamespace(PlotWindow=Mock())}):
+            spec.loader.exec_module(demo_module)
+        with patch.object(demo_module, 'Publisher'), patch.object(demo_module, 'MonitorBridge'):
+            demo = demo_module.Demo(Mock(paused=False))
+            demo.monitor.offer.side_effect = RuntimeError('observer failure')
+            with self.assertLogs(level='ERROR'):
+                demo._tick()
+            demo.publisher.send.assert_called_once()
+            demo.window.push_frame.assert_called_once()
+            demo.shutdown()
 
     def test_snapshot_failure_does_not_interrupt_controller_publication(self):
         from main import Controller

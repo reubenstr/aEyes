@@ -29,41 +29,43 @@ function Dot({ good }: { good: boolean }) {
 
 function Camera({ state }: { state: Telemetry | null }) {
   const [retry, setRetry] = useState(0);
+  const available = state?.controller.status === "running" && state.camera.available;
+  const streaming = available && state?.camera.status === "streaming";
+  const simulation = state?.source === "demo" && state.controller.status === "running";
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (state?.camera.status !== "streaming") setRetry((v) => v + 1);
-    }, 3000);
+    if (!available || streaming) return;
+    const timer = setInterval(() => setRetry((v) => v + 1), 3000);
     return () => clearInterval(timer);
-  }, [state?.camera.status]);
+  }, [available, streaming]);
   return (
     <section className="panel camera-panel">
       <div className="panel-title">
-        <h2>Camera View | OAK-D W</h2>
+        <h2>Camera View{available ? " | OAK-D W" : ""}</h2>
         <span
-          className={`pill ${state?.camera.status === "streaming" ? "good" : ""}`}
+          className={`pill ${streaming ? "good" : ""}`}
         >
-          <Dot good={state?.camera.status === "streaming"} />
-          {state?.camera.status ?? "Connecting"}
+          <Dot good={!!streaming} />
+          {simulation ? "Not available" : (state?.camera.status ?? "Waiting")}
         </span>
       </div>
       <div className="camera-image">
-        <img
+        {available && <img
           src={`/api/camera.mjpeg?session=${state?.session_id ?? ""}&retry=${retry}`}
           alt="Live camera with detected face bounding boxes"
           onError={() => setTimeout(() => setRetry((v) => v + 1), 1500)}
-        />
-        {state?.camera.status !== "streaming" && (
+        />}
+        {!streaming && (
           <div className="camera-placeholder">
             <Logo />
             <span>
-              {state
-                ? "Waiting for fresh camera frames"
-                : "Connecting to controller"}
+              {simulation ? "No camera in this source"
+                : available ? "Waiting for fresh camera frames"
+                : "Waiting for main.py or demo.py"}
             </span>
           </div>
         )}
         <span className="camera-overlay">
-          {state?.demo ? "SYNTHETIC PREVIEW" : "RGB / 640 × 360"}
+          {simulation ? "SIMULATION / NO CAMERA" : available ? "RGB / 640 × 360" : "NO CAMERA FEED"}
         </span>
       </div>
       <div className="camera-meta">
@@ -71,7 +73,7 @@ function Camera({ state }: { state: Telemetry | null }) {
           <i className="dot accent" />
           {state?.faces.filter((f) => f.visible).length ?? 0} tracked faces
         </span>
-        <span>{number(state?.timing?.capture_fps)} fps</span>
+        <span>{number(available ? state?.timing?.capture_fps : null)} fps</span>
         <span>
           {state?.camera.age_s == null
             ? "—"
@@ -94,6 +96,7 @@ function EyeCard({
   const health = state?.eye_health.find((e) => e.eye_id === id);
   const assigned = eye?.face_id != null;
   const url = assigned ? state?.crops[String(eye?.face_id)] : undefined;
+  const opening = Math.max(0, Math.min(1, eye?.eye_lid ?? 0.85));
   const [failed, setFailed] = useState("");
   return (
     <article
@@ -109,19 +112,20 @@ function EyeCard({
           title={`${health?.address ?? ""} · Application and motor health unknown`}
         >
           <Dot good={health?.status === "reachable"} />
-          {state?.demo ? "Simulated" : (health?.status ?? "unknown")}
+          {health?.status ?? "unknown"}
         </span>
       </div>
       <div className="eye-preview">
-        <div
-          className="eye-shape"
-          style={{
-            transform: `scaleY(${Math.max(0.08, eye?.eye_lid ?? 0.85)})`,
-          }}
-        >
+        <div className="eye-shape">
           <div className="iris">
             <div className="pupil" />
           </div>
+          {opening < 1 && (
+            <svg className="eyelids" viewBox="0 0 100 100" aria-hidden="true">
+              <path d={`M 0 0 H 100 V 50 A 50 ${50 * opening} 0 0 0 0 50 Z`} />
+              <path d={`M 0 100 H 100 V 50 A 50 ${50 * opening} 0 0 1 0 50 Z`} />
+            </svg>
+          )}
         </div>
         <span
           className="eye-target"
@@ -142,7 +146,9 @@ function EyeCard({
           />
         ) : (
           <div className="crop-placeholder">
-            {assigned ? "No fresh face crop" : "Waiting for a face"}
+            {state?.source === "demo" && state.controller.status === "running"
+              ? "No camera in this source"
+              : assigned ? "No fresh face crop" : "Waiting for a face"}
           </div>
         )}
         <span>{url && failed !== url ? "Live crop" : "—"}</span>
@@ -248,6 +254,7 @@ export default function App() {
     setPage(next);
   };
   const live = connected && state?.controller.status === "running";
+  const faces = live ? state?.faces ?? [] : [];
   return (
     <div className="app">
       <header className="topbar">
@@ -287,23 +294,28 @@ export default function App() {
         <div className="page-heading">
           <h1>{page === "dashboard" ? "System Overview" : "Settings"}</h1>
           <span className="device-badge">
-            {state?.demo ? "DEMO ENVIRONMENT" : "AEYES / CONTROLLER"}
+            {live ? state?.source === "demo" ? "AEYES / SIMULATION" : "AEYES / LIVE CAMERA" : "AEYES / WAITING"}
           </span>
         </div>
         {!connected && (
           <div className="notice warning" role="status">
-            Backend connection unavailable. Displayed values may be stale;
-            reconnecting automatically.
+            Backend connection unavailable. Reconnecting automatically.
           </div>
         )}
         {page === "settings" ? (
           <Settings state={state} />
         ) : (
           <>
+            {connected && !live && (
+              <div className="notice" role="status">
+                {state?.controller.status === "stale" ? "Application telemetry stopped. " : ""}
+                Waiting for main.py or demo.py to publish data.
+              </div>
+            )}
             <div className="status-strip">
               <span>
                 <Dot good={!!live} />
-                Controller{" "}
+                Application{" "}
                 <b>
                   {state?.controller.restarting
                     ? "Restarting"
@@ -323,7 +335,7 @@ export default function App() {
                 </b>
               </span>
               <span>
-                Publication <b>{number(state?.timing?.publish_hz)} Hz</b>
+                Publication <b>{number(live ? state?.timing?.publish_hz : null)} Hz</b>
               </span>
               <span>
                 Telemetry age{" "}
@@ -335,7 +347,7 @@ export default function App() {
               </span>
             </div>
             <div className={`visual-grid ${!live ? "stale" : ""}`}>
-              <Camera state={state} />
+              <Camera state={live ? state : null} />
               <Suspense
                 fallback={
                   <section className="panel scene-panel settings-loading">
@@ -369,7 +381,7 @@ export default function App() {
                   <EyeCard
                     key={i + 1}
                     id={i + 1}
-                    eye={state?.eyes.find((e) => e.eye_id === i + 1)}
+                    eye={live ? state?.eyes.find((e) => e.eye_id === i + 1) : undefined}
                     state={state}
                   />
                 ))}
@@ -393,7 +405,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {state?.faces.map((face) => (
+                    {faces.map((face) => (
                       <tr key={face.id}>
                         <td>#{face.id}</td>
                         <td>
@@ -408,18 +420,18 @@ export default function App() {
                         <td>{Math.round(face.depth_age_s * 1000)} ms</td>
                         <td>{face.is_static ? "Static" : "Dynamic"}</td>
                         <td>
-                          {state.eyes
+                          {state?.eyes
                             .filter((e) => e.face_id === face.id)
                             .map((e) => `E${e.eye_id}`)
                             .join(", ") || "—"}
                         </td>
                       </tr>
                     ))}
-                    {!state?.faces.length && (
+                    {!faces.length && (
                       <tr>
                         <td colSpan={7} className="empty-table">
-                          No tracked faces. New tracks appear after
-                          confirmation.
+                          {live ? "No tracked faces. New tracks appear after confirmation."
+                            : "Waiting for application telemetry."}
                         </td>
                       </tr>
                     )}

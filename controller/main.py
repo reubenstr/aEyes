@@ -17,7 +17,7 @@ from parameters import params as _params
 
 
 class Controller:
-    def __init__(self, monitor=False):
+    def __init__(self, monitor=True):
         # Keep pure pipeline imports usable without installing the camera SDK.
         from camera.detector import Detector
         self.running = True
@@ -88,7 +88,8 @@ class Controller:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", help="Write capture timestamps and project-frame detections as JSONL for replay")
-    parser.add_argument("--monitor", action="store_true", help="Enable the local dashboard telemetry/preview feed")
+    parser.add_argument("--monitor", action=argparse.BooleanOptionalAction, default=True,
+                        help="Publish dashboard telemetry/preview (enabled by default; --no-monitor disables it)")
     args = parser.parse_args()
     controller = Controller(monitor=args.monitor)
     signal.signal(signal.SIGTERM, lambda *_: setattr(controller, "running", False))

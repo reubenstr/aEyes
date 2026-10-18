@@ -19,6 +19,7 @@ describe('telemetry connection', () => {
     act(()=>Socket.sockets[0].onmessage?.({data:JSON.stringify({schema_version:1,faces:[],eyes:[],geometry:{},controller:{},camera:{}})}));
     expect(result.current.connected).toBe(true);
     act(()=>Socket.sockets[0].close()); expect(result.current.connected).toBe(false);
+    expect(result.current.state).toBeNull();
     act(()=>vi.advanceTimersByTime(500)); expect(Socket.sockets.length).toBe(2);
     unmount(); act(()=>vi.advanceTimersByTime(20000)); expect(Socket.sockets.length).toBe(2);
   });
