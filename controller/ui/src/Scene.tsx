@@ -321,30 +321,23 @@ export function Scene({ state, background = false, controlsContainer }: {
     };
   }, []);
   const toolbar = (
-    <>
-      <div className="panel-title">
-        <h2>Spatial View</h2>
-        <div className="scene-tools">
-          <button
-            className={showTrails ? "active subtle" : "subtle"}
-            onClick={() => setShowTrails(!showTrails)}
-          >
-            Trails
-          </button>
-          <button className="subtle" onClick={() => reset.current()}>
-            Reset view
-          </button>
-        </div>
+    <div className="scene-toolbar" role="group" aria-label="Plot controls">
+      <div className="scene-tools">
+        <button
+          className={showTrails ? "active subtle" : "subtle"}
+          onClick={() => setShowTrails(!showTrails)}
+        >
+          Trails
+        </button>
+        <button onClick={() => reset.current()}>
+          Reset view
+        </button>
       </div>
       <div className="scene-legend">
-        <span>
-          <i className="dot accent" />
-          Assigned gaze
-        </span>
         <span>Drag to orbit · Scroll to zoom</span>
         <span>X forward / Y left / Z up · m</span>
       </div>
-    </>
+    </div>
   );
   return (
     <section className={`scene-panel ${background ? "scene-background" : "panel"}`}>

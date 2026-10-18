@@ -45,7 +45,7 @@ describe('application dashboard', () => {
     render(<App />);
     expect(screen.getByRole('heading', {name:'System Resources | Raspberry Pi'})).toBeTruthy();
     expect(screen.queryByRole('complementary', {name:'Eyes 1 to 3'})).toBeNull();
-    expect(screen.getByText('AEYES / SIMULATION')).toBeTruthy();
+    expect(screen.getByText('SIMULATION')).toBeTruthy();
   });
 
   it('waits for an application without showing generated data or requesting camera images', () => {
@@ -60,7 +60,7 @@ describe('application dashboard', () => {
   it('shows simulation tracking and actual reachability with explicit camera placeholders', () => {
     vi.mocked(useTelemetry).mockReturnValue({ state: state(), connected: true });
     render(<App />);
-    expect(screen.getByText('AEYES / SIMULATION')).toBeTruthy();
+    expect(screen.getByText('SIMULATION')).toBeTruthy();
     expect(screen.getAllByText('No camera in this source').length).toBeGreaterThan(0);
     expect(screen.getByText('online')).toBeTruthy();
     expect(screen.getByText('confirmed')).toBeTruthy();
@@ -68,10 +68,8 @@ describe('application dashboard', () => {
     const card = screen.getByText('online').closest('article')!;
     expect(within(card).getByText('Face #42')).toBeTruthy();
     expect(within(card).getByText('12.3')).toBeTruthy();
-    expect(within(screen.getByRole('complementary', {name:'Eyes 1 to 3'})).getAllByRole('article').map(card => card.getAttribute('aria-label')))
-      .toEqual(['Eye 01', 'Eye 02', 'Eye 03']);
-    expect(within(screen.getByRole('complementary', {name:'Eyes 4 to 6'})).getAllByRole('article').map(card => card.getAttribute('aria-label')))
-      .toEqual(['Eye 04', 'Eye 05', 'Eye 06']);
+    expect(within(screen.getByRole('complementary', {name:'Eyes 1 to 6'})).getAllByRole('article').map(card => card.getAttribute('aria-label')))
+      .toEqual(['Eye 01', 'Eye 02', 'Eye 03', 'Eye 04', 'Eye 05', 'Eye 06']);
     const camera = screen.getByRole('region', {name:'Camera'});
     expect(within(camera).getByText('SIMULATION / NO CAMERA')).toBeTruthy();
     expect(within(camera).getByText('Not available')).toBeTruthy();

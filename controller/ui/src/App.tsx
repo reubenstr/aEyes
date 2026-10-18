@@ -104,50 +104,48 @@ function EyeCard({
   const [failed, setFailed] = useState("");
   return (
     <article className="eye-card" aria-label={`Eye ${String(id).padStart(2, "0")}`}>
-      <div className="eye-card-heading">
-        <div className="eye-identity">
-          <span>
-            Eye <b>{String(id).padStart(2, "0")}</b>
-          </span>
-          <span
-            className="reachability"
-            title={`${health?.address ?? ""} · Application and motor health unknown`}
-          >
-            <Dot good={health?.status === "reachable"} />
-            {health?.status === "reachable" ? "online"
-              : health?.status === "unreachable" ? "offline"
-              : (health?.status ?? "unknown")}
-          </span>
-          <span className="assignment" title={assigned ? `Face #${eye?.face_id}` : "No face assigned"}>
-            {assigned ? `Face #${eye?.face_id}` : "Face —"}
-          </span>
+      <div className="eye-identity">
+        <span>
+          Eye <b>{String(id).padStart(2, "0")}</b>
+        </span>
+        <span
+          className="reachability"
+          title={`${health?.address ?? ""} · Application and motor health unknown`}
+        >
+          <Dot good={health?.status === "reachable"} />
+          {health?.status === "reachable" ? "online"
+            : health?.status === "unreachable" ? "offline"
+            : (health?.status ?? "unknown")}
+        </span>
+        <span className="assignment" title={assigned ? `Face #${eye?.face_id}` : "No face assigned"}>
+          {assigned ? `Face #${eye?.face_id}` : "Face —"}
+        </span>
+      </div>
+      <div className="eye-angles" title="Commanded motor targets in degrees">
+        <div>
+          <span>YAW</span>
+          <strong>
+            {number(eye?.yaw)}
+            <small>°</small>
+          </strong>
         </div>
-        <div className="eye-preview">
-          <EyePreview opening={opening} irisColor={eye?.iris_color} />
+        <div>
+          <span>PITCH</span>
+          <strong>
+            {number(eye?.pitch)}
+            <small>°</small>
+          </strong>
         </div>
-        <div className="eye-angles" title="Commanded motor targets in degrees">
-          <div>
-            <span>YAW</span>
-            <strong>
-              {number(eye?.yaw)}
-              <small>°</small>
-            </strong>
-          </div>
-          <div>
-            <span>PITCH</span>
-            <strong>
-              {number(eye?.pitch)}
-              <small>°</small>
-            </strong>
-          </div>
-          <div>
-            <span>LID</span>
-            <strong>
-              {eye ? Math.round(eye.eye_lid * 100) : "—"}
-              <small>%</small>
-            </strong>
-          </div>
+        <div>
+          <span>LID</span>
+          <strong>
+            {eye ? Math.round(eye.eye_lid * 100) : "—"}
+            <small>%</small>
+          </strong>
         </div>
+      </div>
+      <div className="eye-preview">
+        <EyePreview opening={opening} irisColor={eye?.iris_color} />
       </div>
       <div className="face-crop">
         {url && failed !== url ? (
@@ -256,7 +254,7 @@ export default function App() {
         </b>
       </span>
       <span className="device-badge">
-        {live ? state?.source === "demo" ? "AEYES / SIMULATION" : "AEYES / LIVE CAMERA" : "AEYES / WAITING"}
+        {live ? state?.source === "demo" ? "SIMULATION" : "AEYES / LIVE CAMERA" : "AEYES / WAITING"}
       </span>
     </div>
   );
@@ -348,77 +346,69 @@ export default function App() {
                 }
               />
             </Suspense>
-            {[[1, 2, 3], [4, 5, 6]].map((ids, column) => (
-              <aside
-                key={column}
-                className={`eye-column ${column === 0 ? "eye-column-left" : "eye-column-right"}`}
-                aria-label={`Eyes ${ids[0]} to ${ids[2]}`}
-              >
-                {ids.map((id) => (
-                  <EyeCard
-                    key={id}
-                    id={id}
-                    eye={live ? state?.eyes.find((e) => e.eye_id === id) : undefined}
-                    state={state}
-                  />
-                ))}
-              </aside>
-            ))}
-            <div className="overview-bottom">
-              <Camera state={live ? state : null} />
-              <section className="panel faces-panel">
-                <div className="panel-title">
-                  <h2>Tracking</h2>
-                </div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Face</th>
-                        <th>State</th>
-                        <th>Position X / Y / Z (m)</th>
-                        <th>Confidence</th>
-                        <th>Depth age</th>
-                        <th>Classification</th>
-                        <th>Eyes</th>
+            <aside className="eye-column" aria-label="Eyes 1 to 6">
+              {[1, 2, 3, 4, 5, 6].map((id) => (
+                <EyeCard
+                  key={id}
+                  id={id}
+                  eye={live ? state?.eyes.find((e) => e.eye_id === id) : undefined}
+                  state={state}
+                />
+              ))}
+            </aside>
+            <Camera state={live ? state : null} />
+            <section className="panel faces-panel overview-tracking">
+              <div className="panel-title">
+                <h2>Tracking</h2>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Face</th>
+                      <th>State</th>
+                      <th>Position X / Y / Z (m)</th>
+                      <th>Confidence</th>
+                      <th>Depth age</th>
+                      <th>Classification</th>
+                      <th>Eyes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {faces.map((face) => (
+                      <tr key={face.id}>
+                        <td>#{face.id}</td>
+                        <td>
+                          <span className="pill">{face.status}</span>
+                        </td>
+                        <td className="numeric">
+                          {[face.position.x, face.position.y, face.position.z]
+                            .map((v) => v.toFixed(2))
+                            .join(" / ")}
+                        </td>
+                        <td>{Math.round(face.confidence * 100)}%</td>
+                        <td>{Math.round(face.depth_age_s * 1000)} ms</td>
+                        <td>{face.is_static ? "Static" : "Dynamic"}</td>
+                        <td>
+                          {state?.eyes
+                            .filter((e) => e.face_id === face.id)
+                            .map((e) => `E${e.eye_id}`)
+                            .join(", ") || "—"}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {faces.map((face) => (
-                        <tr key={face.id}>
-                          <td>#{face.id}</td>
-                          <td>
-                            <span className="pill">{face.status}</span>
-                          </td>
-                          <td className="numeric">
-                            {[face.position.x, face.position.y, face.position.z]
-                              .map((v) => v.toFixed(2))
-                              .join(" / ")}
-                          </td>
-                          <td>{Math.round(face.confidence * 100)}%</td>
-                          <td>{Math.round(face.depth_age_s * 1000)} ms</td>
-                          <td>{face.is_static ? "Static" : "Dynamic"}</td>
-                          <td>
-                            {state?.eyes
-                              .filter((e) => e.face_id === face.id)
-                              .map((e) => `E${e.eye_id}`)
-                              .join(", ") || "—"}
-                          </td>
-                        </tr>
-                      ))}
-                      {!faces.length && (
-                        <tr>
-                          <td colSpan={7} className="empty-table">
-                            {live ? "No tracked faces. New tracks appear after confirmation."
-                              : "Waiting for application telemetry."}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
+                    ))}
+                    {!faces.length && (
+                      <tr>
+                        <td colSpan={7} className="empty-table">
+                          {live ? "No tracked faces. New tracks appear after confirmation."
+                            : "Waiting for application telemetry."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         )}
       </main>
