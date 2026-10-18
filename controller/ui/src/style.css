@@ -26,7 +26,6 @@ body {
     --card-gap: 20px
 }
 
-.topbar,
 main {
     width: calc(100% - 2 * var(--page-gutter));
     max-width: 1572px;
