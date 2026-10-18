@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from data_types import Color, ControlMessage, EyeState
 
 
-EYE_DIR = Path(__file__).resolve().parents[1] / "eye"
+EYE_DIR = Path(__file__).resolve().parents[2] / "eye"
 
 
 def load_module(name, path):

@@ -172,7 +172,7 @@ class StateTests(unittest.TestCase):
 
     def test_backend_import_does_not_load_hardware_or_live_parameters(self):
         code="import monitoring.server,sys; assert not set(['depthai','parameters','main','publisher','face_tracker']).intersection(sys.modules)"
-        subprocess.run([sys.executable,'-c',code],check=True,cwd=Path(__file__).parent)
+        subprocess.run([sys.executable,'-c',code],check=True,cwd=Path(__file__).resolve().parents[1])
 
     def test_api_and_websocket_wait_for_an_application_without_generating_data(self):
         app=create_app(start_workers=False)

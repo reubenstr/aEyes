@@ -225,7 +225,7 @@ preview server proxies `/api` to the same backend. Production uses nginx on port
 From `controller/`:
 
 ```bash
-.venv/bin/python -m unittest discover -v
+.venv/bin/python -m unittest discover -s tests -v
 curl http://127.0.0.1:8080/api/health
 curl http://127.0.0.1:8080/api/state
 ```

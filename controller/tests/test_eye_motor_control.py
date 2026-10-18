@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 from data_types import ControlMessage, EyeState
 
-EYE_DIR = Path(__file__).resolve().parents[1] / 'eye'
+EYE_DIR = Path(__file__).resolve().parents[2] / 'eye'
 
 
 def load(name, path):

@@ -25,7 +25,7 @@ For local development, use the existing controller virtual environment or create
 
 ```bash
 cd controller
-.venv/bin/python -m unittest discover -v
+.venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python main.py --demo
 ```
 
@@ -111,7 +111,7 @@ All layout values live in `controller/config.py`:
 
 ## Shared Message Contract
 
-`controller/data_types.py` and `eye/data_types.py` define matching `ControlMessage` dataclasses. Keep their field names, types, and serialization synchronized; `test_eye_render_pipeline.py` checks compatibility.
+`controller/data_types.py` and `eye/data_types.py` define matching `ControlMessage` dataclasses. Keep their field names, types, and serialization synchronized; `controller/tests/test_eye_render_pipeline.py` checks compatibility.
 
 Current fields:
 
@@ -201,7 +201,7 @@ The installed eye service sets `DISPLAY=:0` and `XAUTHORITY`. Controller auto-st
 | `controller/replay.py` | Capture-log replay and optional ground-truth metrics |
 | `controller/monitoring/`, `controller/ui/` | Isolated FastAPI monitoring/MJPEG API and Yarn/Vite/React/Three.js dashboard |
 | `controller/deploy/` | Controller/monitor systemd units, port-80 nginx proxy, restricted restart rule |
-| `controller/test_*.py` | Hardware-independent unittest suite |
+| `controller/tests/test_*.py` | Hardware-independent unittest suite |
 | `eye/main.py` | Subscriber, startup/homing, command ramping, renderer dispatch |
 | `eye/eye_renderer.py`, `eye/shaders/eye.frag` | Pyglet/GLES 3.1 rendering and procedural eye shader |
 | `eye/motors/`, `eye/zero.py` | CAN control/configuration and manual zeroing |

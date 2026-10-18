@@ -18,7 +18,7 @@ class CameraAdapterTests(unittest.TestCase):
         package = types.ModuleType('depthai_nodes')
         package.node = node
         name = 'camera_adapter_test'
-        spec = importlib.util.spec_from_file_location(name, Path(__file__).parent / 'camera' / 'detector.py')
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / 'camera' / 'detector.py')
         cls.module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {'depthai': dai, 'depthai_nodes': package, 'depthai_nodes.node': node,
                                       name: cls.module}):
