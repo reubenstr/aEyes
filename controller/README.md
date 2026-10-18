@@ -207,6 +207,11 @@ Demo mode accepts the same options, including `--no-monitor` and
 The monitoring API and browser can remain open while you stop one mode and start
 the other.
 
+Each eye card keeps the last successfully loaded face photo while that face is
+assigned to the eye. Missed detections, camera gaps, and failed image refreshes
+leave the photo visible; a newer image replaces it once loaded. Reassignment,
+unassignment, a new controller session, or stale application telemetry clears it.
+
 Start Vite in terminal 3, from `controller/ui/`:
 
 ```bash

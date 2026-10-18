@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { Settings } from "./Settings";
 import { EyePreview } from "./EyePreview";
+import { FaceCrop } from "./FaceCrop";
 import { useTelemetry } from "./useTelemetry";
 import type { Eye, Telemetry } from "./types";
 
@@ -180,10 +181,10 @@ function EyeCard({
   state: Telemetry | null;
 }) {
   const health = state?.eye_health.find((e) => e.eye_id === id);
-  const assigned = eye?.face_id != null;
-  const url = assigned ? state?.crops[String(eye?.face_id)] : undefined;
+  const faceId = eye?.face_id ?? null;
+  const assigned = faceId != null;
+  const url = assigned ? state?.crops[String(faceId)] : undefined;
   const opening = Math.max(0, Math.min(1, eye?.eye_lid ?? 0.85));
-  const [failed, setFailed] = useState("");
   return (
     <article className="eye-card" aria-label={`Eye ${String(id).padStart(2, "0")}`}>
       <div className="eye-identity">
@@ -230,19 +231,17 @@ function EyeCard({
         <EyePreview opening={opening} irisColor={eye?.iris_color} />
       </div>
       <div className="face-crop">
-        {url && failed !== url ? (
-          <img
-            src={url}
-            alt={`Face ${eye?.face_id} assigned to eye ${id}`}
-            onError={() => setFailed(url)}
-          />
-        ) : (
-          <div className="crop-placeholder">
-            {state?.source === "demo" && state.controller.status === "running"
+        <FaceCrop
+          key={`${state?.session_id ?? ""}:${faceId ?? "unassigned"}`}
+          faceId={faceId}
+          eyeId={id}
+          url={url}
+          placeholder={
+            state?.source === "demo" && state.controller.status === "running"
               ? "No camera in this source"
-              : assigned ? "No fresh face crop" : "Waiting for a face"}
-          </div>
-        )}
+              : assigned ? "Waiting for a face image" : "Waiting for a face"
+          }
+        />
       </div>
     </article>
   );

@@ -52,18 +52,25 @@ class MonitorState:
                     self.retired.append(self.source["session_id"])
             self.source = snapshot
             self.received_at = time.monotonic()
-        self.video.set_session(session)
-        self.video.observe(session, snapshot.get("observation"))
+            self.video.set_session(session)
+            self.video.set_assignments(
+                session,
+                {eye["face_id"] for eye in snapshot.get("eyes", [])
+                 if eye["face_id"] is not None}
+                if snapshot.get("camera_available", True) else set(),
+            )
+            self.video.observe(session, snapshot.get("observation"))
 
     def describe(self, service=None, now=None):
         now = time.monotonic() if now is None else now
         with self.lock:
             source = deepcopy(self.source) if self.source else {}
             compute, health = deepcopy(self.compute), deepcopy(self.health)
+            _, _, image_timestamp = self.video.preview()
+            crops = self.video.crop_metadata()
         observation = source.pop("observation", None)
         source_age = max(0.0, now - source["timestamp"]) if source else None
         capture_age = max(0.0, now - observation["timestamp"]) if observation else None
-        _, _, image_timestamp = self.video.preview()
         video_age = (
             max(0.0, now - image_timestamp) if image_timestamp is not None else None
         )
@@ -86,7 +93,7 @@ class MonitorState:
             "faces": source.get("faces", []) if fresh else [],
             "eyes": source.get("eyes", []) if fresh else [],
             "timing": source.get("timing") if fresh else None,
-            "crops": self.video.crop_metadata(now) if fresh and camera_available else {},
+            "crops": crops if fresh and camera_available else {},
             "system": compute,
             "eye_health": health,
             "controller": {

@@ -8,11 +8,12 @@ from urllib.parse import urlencode
 import cv2
 import numpy as np
 
+from .contracts import STALE_SECONDS
+
 
 PREVIEW_INTERVAL_S = 0.1
 PAIR_WAIT_S = 0.2
 CROP_INTERVAL_S = 0.2
-CROP_MAX_AGE_S = 0.5
 
 
 class VideoCache:
@@ -23,6 +24,7 @@ class VideoCache:
         self.observations = OrderedDict()
         self.crops = OrderedDict()
         self.latest_crops = {}
+        self.assigned_faces = set()
         self.jpeg = None
         self.serial = 0
         self.timestamp = None
@@ -40,10 +42,26 @@ class VideoCache:
             self.observations.clear()
             self.crops.clear()
             self.latest_crops.clear()
+            self.assigned_faces.clear()
             self.jpeg = self.timestamp = self.rendered = None
             self.last_render = -1.0
             self.last_paired_timestamp = None
             self.unpaired_since = None
+
+    def set_assignments(self, session, face_ids):
+        """Retain crops while at least one current eye is assigned to the face."""
+        with self.lock:
+            if session != self.session:
+                return
+            self.assigned_faces = set(face_ids)
+            self.latest_crops = {
+                fid: value for fid, value in self.latest_crops.items()
+                if fid in self.assigned_faces
+            }
+            self.crops = OrderedDict(
+                (key, value) for key, value in self.crops.items()
+                if key[2] in self.assigned_faces
+            )
 
     @staticmethod
     def _bounded(mapping, key, value, limit=4):
@@ -96,23 +114,19 @@ class VideoCache:
         return result if result[2] > result[0] and result[3] > result[1] else None
 
     def _refresh_crops(self, now):
-        self.latest_crops = {
-            fid: value
-            for fid, value in self.latest_crops.items()
-            if 0 <= now - value["timestamp"] <= CROP_MAX_AGE_S
-        }
         # A completed pair can supply crops even if its preview was skipped.
         # Newest first, with a separate refresh limit for each assigned face.
         for key in reversed(self.images):
             meta, raw = self.images[key]
             observation = self.observations.get(key)
-            if observation is None or not 0 <= now - meta["timestamp"] <= CROP_MAX_AGE_S:
+            # Only accept fresh incoming frames; already retained crops do not expire.
+            if observation is None or not 0 <= now - meta["timestamp"] <= STALE_SECONDS:
                 continue
             assigned = {eye["face_id"] for eye in observation["eyes"]
                         if eye["face_id"] is not None}
             height, width = raw.shape[:2]
             for face in observation["faces"]:
-                if face["id"] not in assigned:
+                if face["id"] not in assigned or face["id"] not in self.assigned_faces:
                     continue
                 previous = self.latest_crops.get(face["id"])
                 if previous and meta["timestamp"] - previous["timestamp"] < CROP_INTERVAL_S:
@@ -121,14 +135,17 @@ class VideoCache:
                 if box is None:
                     continue
                 x1, y1, x2, y2 = box
+                jpeg = self._jpeg(raw[y1:y2, x1:x2])
                 self._bounded(
                     self.crops,
                     (self.session, key, face["id"]),
-                    (meta["timestamp"], self._jpeg(raw[y1:y2, x1:x2])),
+                    jpeg,
                     16,
                 )
                 self.latest_crops[face["id"]] = {
                     "timestamp": meta["timestamp"],
+                    "capture_key": key,
+                    "jpeg": jpeg,
                     "url": f"/api/faces/{face['id']}/crop.jpg?"
                     + urlencode({"session": self.session, "capture": key}),
                 }
@@ -208,20 +225,22 @@ class VideoCache:
                 self.unpaired_since = None
                 self.last_paired_timestamp = meta["timestamp"]
 
-    def crop(self, session, capture, face_id, now=None):
-        now = time.monotonic() if now is None else now
+    def crop(self, session, capture, face_id):
         with self.lock:
-            item = self.crops.get((session, capture, face_id))
-            return item[1] if item and 0 <= now - item[0] <= CROP_MAX_AGE_S else None
+            if session != self.session or face_id not in self.assigned_faces:
+                return None
+            latest = self.latest_crops.get(face_id)
+            if latest and latest["capture_key"] == capture:
+                return latest["jpeg"]
+            return self.crops.get((session, capture, face_id))
 
     def preview(self):
         with self.lock:
             return self.serial, self.jpeg, self.timestamp
 
-    def crop_metadata(self, now):
+    def crop_metadata(self):
         with self.lock:
             return {
                 str(fid): value["url"]
                 for fid, value in self.latest_crops.items()
-                if 0 <= now - value["timestamp"] <= CROP_MAX_AGE_S
             }

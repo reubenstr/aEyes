@@ -92,6 +92,118 @@ describe('application dashboard', () => {
   });
 });
 
+describe('assigned face thumbnails', () => {
+  const first = '/api/faces/42/crop.jpg?session=live-one&capture=a';
+  const setup = () => {
+    let data: Telemetry = {
+      ...state(), source: 'main', session_id: 'live-one', crops: {'42': first},
+      camera: {available: true, status: 'streaming', age_s: 0, video_age_s: 0, capture_key: 'a'},
+    };
+    vi.mocked(useTelemetry).mockReturnValue({state: data, connected: true});
+    const {rerender} = render(<App />);
+    const card = screen.getByRole('article', {name: 'Eye 01'});
+    const image = (url: string) => Array.from(card.querySelectorAll<HTMLImageElement>('.face-crop img'))
+      .find(element => element.getAttribute('src') === url)!;
+    const update = (changes: Partial<Telemetry>, connected = true) => {
+      data = {...data, ...changes};
+      vi.mocked(useTelemetry).mockReturnValue({state: data, connected});
+      rerender(<App />);
+    };
+    const visible = () => within(card).queryByRole('img', {name: /Face .* assigned to eye 1/});
+    return {card, data, image, update, visible};
+  };
+
+  it('keeps the last loaded image until its replacement loads, including failed refreshes', () => {
+    const {card, image, update, visible} = setup();
+    const original = image(first);
+    expect(visible()).toBeNull();
+    fireEvent.load(original);
+    expect(visible()).toBe(original);
+
+    const failed = '/api/faces/42/crop.jpg?session=live-one&capture=b';
+    update({crops: {'42': failed}});
+    expect(visible()).toBe(original);
+    expect(image(failed).style.display).toBe('none');
+    fireEvent.error(image(failed));
+    expect(visible()).toBe(original);
+    expect(within(card).queryByText('Waiting for a face image')).toBeNull();
+
+    const next = '/api/faces/42/crop.jpg?session=live-one&capture=c';
+    update({crops: {'42': next}});
+    const pending = image(next);
+    expect(visible()).toBe(original);
+    fireEvent.load(pending);
+    expect(visible()).toBe(pending);
+    expect(card.querySelectorAll('.face-crop img').length).toBe(1);
+  });
+
+  it('holds the photo through missing crop updates and stale live video while assigned', () => {
+    const {data, image, update, visible} = setup();
+    const original = image(first);
+    fireEvent.load(original);
+    update({crops: {}, camera: {...data.camera, status: 'stale', video_age_s: 10}});
+    expect(visible()).toBe(original);
+  });
+
+  it('finishes an in-flight image while newer crop URLs arrive', () => {
+    const {image, update, visible} = setup();
+    const original = image(first);
+    update({crops: {'42': '/api/faces/42/crop.jpg?session=live-one&capture=b'}});
+    const latest = '/api/faces/42/crop.jpg?session=live-one&capture=c';
+    update({crops: {'42': latest}});
+    expect(image(first)).toBe(original);
+    fireEvent.load(original);
+    expect(visible()).toBe(original);
+    const pending = image(latest);
+    expect(pending.style.display).toBe('none');
+    fireEvent.load(pending);
+    expect(visible()).toBe(pending);
+  });
+
+  it('clears the old person on reassignment or release and ignores late loads', () => {
+    const {card, data, image, update, visible} = setup();
+    const original = image(first);
+    fireEvent.load(original);
+    const pending = '/api/faces/42/crop.jpg?session=live-one&capture=late';
+    update({crops: {'42': pending}});
+    const late = image(pending);
+    const reassigned = data.eyes.map(eye => ({...eye, face_id: 43}));
+    update({eyes: reassigned, crops: {}});
+    expect(visible()).toBeNull();
+    fireEvent.load(late);
+    expect(visible()).toBeNull();
+
+    const next = '/api/faces/43/crop.jpg?session=live-one&capture=d';
+    update({crops: {'43': next}});
+    fireEvent.load(image(next));
+    expect(visible()?.getAttribute('alt')).toBe('Face 43 assigned to eye 1');
+    update({eyes: data.eyes.map(eye => ({...eye, face_id: null}))});
+    expect(card.querySelector('.face-crop img')).toBeNull();
+    update({eyes: reassigned, crops: {}});
+    expect(visible()).toBeNull();
+  });
+
+  it('clears retained images when the controller session changes', () => {
+    const {image, update, visible} = setup();
+    fireEvent.load(image(first));
+    update({session_id: 'live-two', crops: {}});
+    expect(visible()).toBeNull();
+    const next = '/api/faces/42/crop.jpg?session=live-two&capture=a';
+    update({crops: {'42': next}});
+    const pending = image(next);
+    fireEvent.load(pending);
+    expect(visible()).toBe(pending);
+  });
+
+  it.each(['stale', 'disconnected'])('clears retained images when telemetry is %s', status => {
+    const {data, image, update, visible} = setup();
+    fireEvent.load(image(first));
+    update({controller: {...data.controller, status: status === 'stale' ? 'stale' : 'running'}},
+      status !== 'disconnected');
+    expect(visible()).toBeNull();
+  });
+});
+
 describe('camera preview resizing', () => {
   const setup = () => {
     vi.mocked(useTelemetry).mockReturnValue({ state: state(), connected: true });

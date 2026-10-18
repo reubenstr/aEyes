@@ -44,6 +44,7 @@ class VideoTests(unittest.TestCase):
     def setUp(self):
         self.cache = VideoCache()
         self.cache.set_session('one')
+        self.cache.set_assignments('one', {0})
         self.image = np.full((100,100,3), (50,100,150), np.uint8)
 
     def add(self, capture='1-10000000', now=10.):
@@ -55,11 +56,13 @@ class VideoTests(unittest.TestCase):
     def test_pairing_deduplicates_shared_faces_and_preserves_raw_crop(self):
         self.add()
         self.assertEqual(len(self.cache.crops), 1)
-        crop = self.cache.crop('one','1-10000000',0,now=10.1)
+        crop = self.cache.crop('one','1-10000000',0)
         decoded = cv2.imdecode(np.frombuffer(crop,np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(decoded.shape, (50,50,3))
-        self.assertIsNone(self.cache.crop('one','1-10000000',0,now=11.))
-        self.assertIsNone(self.cache.crop('two','1-10000000',0,now=10.1))
+        self.cache.render(100.)
+        self.assertEqual(self.cache.crop('one','1-10000000',0), crop)
+        self.assertIn('0', self.cache.crop_metadata())
+        self.assertIsNone(self.cache.crop('two','1-10000000',0))
 
     def test_image_before_metadata_does_not_invent_crop(self):
         self.cache.image({'session_id':'one','capture_key':'a','timestamp':10.}, self.image)
@@ -70,7 +73,7 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(self.cache.crops,{})
         self.cache.observe('one', snapshot(capture='a')['observation'])
         self.cache.render(10.32)
-        self.assertIsNotNone(self.cache.crop('one','a',0,now=10.32))
+        self.assertIsNotNone(self.cache.crop('one','a',0))
 
     def test_delayed_detections_keep_boxes_and_crops_while_newer_images_arrive(self):
         for index in range(20):
@@ -90,7 +93,7 @@ class VideoTests(unittest.TestCase):
             # Interior pixels identify the selected capture; the border must be annotated.
             np.testing.assert_allclose(preview[50,50], (19 + index,60,90), atol=3)
             self.assertGreater(int(preview[50,25,0]), 70)
-            self.assertIn('0', self.cache.crop_metadata(captured + .01))
+            self.assertIn('0', self.cache.crop_metadata())
 
     def test_missing_metadata_has_bounded_wait_without_borrowing_old_boxes(self):
         self.add('a',10.)
@@ -103,7 +106,7 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(self.cache.rendered, ('d', False))
         preview = cv2.imdecode(np.frombuffer(self.cache.jpeg,np.uint8), cv2.IMREAD_COLOR)
         np.testing.assert_allclose(preview[50,25], self.image[50,25], atol=3)
-        self.assertIsNone(self.cache.crop('one','d',0,now=10.33))
+        self.assertIsNone(self.cache.crop('one','d',0))
 
     def test_crop_updates_even_when_its_pair_is_not_rendered(self):
         self.add('a',10.)
@@ -119,12 +122,13 @@ class VideoTests(unittest.TestCase):
         self.cache.render(10.28)
         self.assertEqual(self.cache.rendered, ('c', True))
         self.assertAlmostEqual(self.cache.timestamp, 10.26)
-        self.assertIsNotNone(self.cache.crop('one','b',0,now=10.28))
-        self.assertIn('capture=b', self.cache.crop_metadata(10.28)['0'])
+        self.assertIsNotNone(self.cache.crop('one','b',0))
+        self.assertIn('capture=b', self.cache.crop_metadata()['0'])
         self.cache.render(10.40)
         self.assertEqual(self.cache.rendered, ('c', True))
-        self.assertIsNone(self.cache.crop('one','b',0,now=10.76))
-        self.assertEqual(self.cache.crop_metadata(10.76), {})
+        self.cache.render(100.)
+        self.assertIsNotNone(self.cache.crop('one','b',0))
+        self.assertIn('capture=b', self.cache.crop_metadata()['0'])
 
     def test_delayed_pairs_restore_annotations_after_raw_video_fallback(self):
         self.add('a',10.)
@@ -139,7 +143,7 @@ class VideoTests(unittest.TestCase):
         self.cache.observe('one', snapshot(now=10.22, capture='c')['observation'])
         self.cache.render(10.45)
         self.assertEqual(self.cache.rendered, ('c', True))
-        self.assertIsNotNone(self.cache.crop('one','c',0,now=10.45))
+        self.assertIsNotNone(self.cache.crop('one','c',0))
         # Still older results cannot replay pairs behind completed C.
         self.cache.observe('one', snapshot(now=10.11, capture='b')['observation'])
         self.cache.render(10.56)
@@ -159,20 +163,48 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(self.cache.rendered, ('b', True))
         preview = cv2.imdecode(np.frombuffer(self.cache.jpeg,np.uint8), cv2.IMREAD_COLOR)
         np.testing.assert_allclose(preview[50,25], self.image[50,25], atol=3)
-        self.assertIsNone(self.cache.crop('one','b',0,now=10.21))
+        self.assertIsNone(self.cache.crop('one','b',0))
 
     def test_stale_pair_cannot_create_a_fresh_crop(self):
         self.cache.image({'session_id':'one','capture_key':'a','timestamp':10.}, self.image)
         self.cache.observe('one', snapshot(capture='a')['observation'])
-        self.cache.render(10.6)
-        self.assertEqual(self.cache.crop_metadata(10.6), {})
-        self.assertIsNone(self.cache.crop('one','a',0,now=10.6))
+        self.cache.render(11.1)
+        self.assertEqual(self.cache.crop_metadata(), {})
+        self.assertIsNone(self.cache.crop('one','a',0))
 
     def test_reused_sequence_cannot_pair_with_old_timestamp(self):
         self.add('1-10000000',10.)
         self.cache.image({'session_id':'one','capture_key':'1-10200000','timestamp':10.2}, self.image)
         self.cache.render(10.21)
-        self.assertIsNone(self.cache.crop('one','1-10200000',0,now=10.21))
+        self.assertIsNone(self.cache.crop('one','1-10200000',0))
+
+    def test_last_crop_survives_history_eviction_by_another_assigned_face(self):
+        self.cache.set_assignments('one', {0, 1})
+        self.add('a',10.)
+        retained = self.cache.crop('one','a',0)
+        for index in range(20):
+            captured = 10.25 + index * .25
+            key = f'other-{index}'
+            observation = snapshot(now=captured, capture=key)['observation']
+            observation['faces'][0]['id'] = 1
+            for eye in observation['eyes']:
+                eye['face_id'] = 1
+            self.cache.observe('one', observation)
+            self.cache.image({'session_id':'one','capture_key':key,'timestamp':captured}, self.image)
+            self.cache.render(captured)
+        self.assertNotIn(('one','a',0), self.cache.crops)
+        self.assertEqual(self.cache.crop('one','a',0), retained)
+        self.assertIn('capture=a', self.cache.crop_metadata()['0'])
+        self.assertEqual(len(self.cache.latest_crops), 2)
+        self.assertLessEqual(len(self.cache.crops), 16)
+
+    def test_releasing_assignment_removes_crops_even_with_old_observations_cached(self):
+        self.add('a',10.)
+        self.cache.set_assignments('one', {1})
+        self.cache.render(10.3)
+        self.assertEqual(self.cache.crop_metadata(), {})
+        self.assertEqual(self.cache.crops, {})
+        self.assertIsNone(self.cache.crop('one','a',0))
 
     def test_pairing_cache_and_crop_cache_are_bounded_and_session_clears(self):
         for i in range(30):
@@ -184,11 +216,12 @@ class VideoTests(unittest.TestCase):
         self.assertIsNone(self.cache.jpeg)
         self.assertEqual(self.cache.latest_crops,{})
         restarted = snapshot(now=1., session='two', capture='restart')
+        self.cache.set_assignments('two', {0})
         self.cache.observe('two', restarted['observation'])
         self.cache.image({'session_id':'two','capture_key':'restart','timestamp':1.}, self.image)
         self.cache.render(1.)
         self.assertEqual(self.cache.rendered, ('restart', True))
-        self.assertIsNotNone(self.cache.crop('two','restart',0,now=1.))
+        self.assertIsNotNone(self.cache.crop('two','restart',0))
 
     def test_unassigned_or_unmatched_boxes_never_produce_crops(self):
         state = snapshot()
@@ -200,6 +233,36 @@ class VideoTests(unittest.TestCase):
 
 
 class StateTests(unittest.TestCase):
+    def test_current_assignments_retain_and_release_crops_without_new_camera_frames(self):
+        state = MonitorState()
+        state.accept(snapshot())
+        state.video.image({'session_id':'one','capture_key':'1-10000000','timestamp':10.},
+                          np.zeros((100,100,3),np.uint8))
+        state.video.render(10.)
+        retained = state.video.crop('one','1-10000000',0)
+        for timestamp in (20., 100.):
+            current = snapshot(now=timestamp)
+            current['observation'] = None
+            for eye in current['eyes'][1:]:
+                eye['face_id'] = None
+            state.accept(current)
+            description = state.describe(now=timestamp+.1)
+            self.assertEqual(description['camera']['status'], 'stale')
+            self.assertEqual(description['controller']['status'], 'running')
+            self.assertIn('0', description['crops'])
+            self.assertEqual(state.video.crop('one','1-10000000',0), retained)
+
+        released = snapshot(now=101.)
+        # Frame metadata still describes the old assignment; current eyes take precedence.
+        released['observation'] = snapshot()['observation']
+        for eye in released['eyes']:
+            eye['face_id'] = None
+        state.accept(released)
+        state.video.render(101.)
+        self.assertEqual(state.describe(now=101.1)['crops'], {})
+        self.assertEqual(state.video.latest_crops, {})
+        self.assertIsNone(state.video.crop('one','1-10000000',0))
+
     def test_camera_and_controller_silence_go_stale_without_new_frames(self):
         state = MonitorState(); state.accept(snapshot())
         state.video.image({'session_id':'one','capture_key':'1-10000000','timestamp':10.}, np.zeros((10,10,3),np.uint8))
@@ -311,6 +374,43 @@ class StateTests(unittest.TestCase):
             self.assertEqual(response.headers['content-type'],'image/jpeg')
             with patch('monitoring.state.time.monotonic', return_value=now+2):
                 self.assertEqual(client.get('/api/state').json()['eyes'], [])
+                self.assertEqual(client.get(crop_url).status_code, 404)
+
+    def test_api_keeps_assigned_crop_available_during_camera_gaps_and_rejects_released_crops(self):
+        state = MonitorState()
+        now = time.monotonic()
+        state.accept(snapshot(now=now))
+        state.video.image({'session_id':'one','capture_key':'1-10000000','timestamp':now},
+                          np.zeros((100,100,3),np.uint8))
+        state.video.render(now)
+        app = create_app(state=state, start_workers=False)
+        with TestClient(app) as client:
+            crop_url = client.get('/api/state').json()['crops']['0']
+            original = client.get(crop_url).content
+            current = snapshot(now=now+10)
+            current['observation'] = None
+            state.accept(current)
+            with patch('monitoring.state.time.monotonic', return_value=now+10.1):
+                data = client.get('/api/state').json()
+                self.assertEqual(data['camera']['status'], 'stale')
+                self.assertEqual(data['crops']['0'], crop_url)
+                response = client.get(crop_url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, original)
+                self.assertEqual(client.get(crop_url.replace('session=one','session=other')).status_code, 404)
+                self.assertEqual(client.get(crop_url.replace('capture=1-10000000','capture=missing')).status_code, 404)
+
+            released = snapshot(now=now+10.2)
+            released['observation'] = None
+            for eye in released['eyes']:
+                eye['face_id'] = None
+            state.accept(released)
+            with patch('monitoring.state.time.monotonic', return_value=now+10.3):
+                self.assertEqual(client.get('/api/state').json()['crops'], {})
+                self.assertEqual(client.get(crop_url).status_code, 404)
+
+            state.accept(snapshot(now=now+11, session='two'))
+            with patch('monitoring.state.time.monotonic', return_value=now+11.1):
                 self.assertEqual(client.get(crop_url).status_code, 404)
 
     def test_main_monitoring_is_enabled_by_default_and_can_be_disabled(self):

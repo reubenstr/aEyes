@@ -143,11 +143,14 @@ def create_app(*, state=None, store=None, service=None, start_workers=True):
 
     @app.get("/api/faces/{face_id}/crop.jpg")
     async def crop(face_id: int, session: str, capture: str):
-        if state.describe()["camera"]["status"] != "streaming":
-            raise HTTPException(404, "No fresh camera feed")
+        current = state.describe()
+        if (current["controller"]["status"] != "running"
+                or current.get("session_id") != session
+                or not any(eye["face_id"] == face_id for eye in current["eyes"])):
+            raise HTTPException(404, "Face is not currently assigned")
         jpeg = state.video.crop(session, capture, face_id)
         if jpeg is None:
-            raise HTTPException(404, "Face image is missing or stale")
+            raise HTTPException(404, "Face image is unavailable")
         return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     def config_description():
