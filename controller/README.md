@@ -226,6 +226,10 @@ bind Vite to `0.0.0.0` and open that computer's address on port 5173.
 
 The Settings screen edits every section of `params.yaml`; physical geometry in
 `config.py` is read-only. `params.defaults.yaml` is the versioned reset baseline.
+Each parameter uses its exact YAML name as the label, followed by a short purpose
+description, an editable value, the active value, and its default value. Section
+and parameter descriptions live alongside the types in `parameter_schema.py`
+and are supplied by `/api/config` in `sections` and `fields` metadata.
 Reset loads defaults into the form. Save validates and atomically writes settings,
 retaining `params.yaml.bak`; changes take effect on the next application startup.
 Saved and active configurations are shown separately; active values are available

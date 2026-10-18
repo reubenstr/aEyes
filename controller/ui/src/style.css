@@ -771,6 +771,11 @@ td.numeric {
     border-bottom: 1px solid var(--line)
 }
 
+.config-heading p {
+    max-width: 85ch;
+    color: var(--muted)
+}
+
 .config-fields {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -780,39 +785,80 @@ td.numeric {
 
 .config-field {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    padding: 17px 0;
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px 0;
     border-bottom: 1px solid #3a3a3a;
     min-width: 0
 }
 
-.config-field:last-child {
+.config-field:last-child,
+.config-field:nth-last-child(2):nth-child(odd) {
     border-bottom: 0
 }
 
-.config-field>div:first-child {
+.config-details {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     min-width: 0
 }
 
 .config-field label {
-    font-size: 16px;
+    line-height: 1.4;
     color: #dbdbdb
 }
 
-.config-field code {
-    font: 12px 'IBM Plex Mono', monospace;
-    color: #a9a9a9;
+.config-field label code {
+    font: 14px 'IBM Plex Mono', monospace;
     overflow-wrap: anywhere
 }
 
-.config-field small {
+.config-description {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5
+}
+
+.config-values {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 18px 28px;
+    margin-top: auto
+}
+
+.config-edit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px
+}
+
+.config-value-label,
+.config-reference-values dt {
     font-size: 12px;
-    color: #adadad
+    color: var(--muted)
+}
+
+.config-reference-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 28px;
+    margin: 0
+}
+
+.config-reference-values dd {
+    margin: 8px 0 0;
+    padding: 8px 0;
+    line-height: 20px;
+    overflow-wrap: anywhere
+}
+
+.config-reference-values code {
+    font: 14px 'IBM Plex Mono', monospace;
+    color: #dbdbdb
 }
 
 .config-field input {
@@ -828,6 +874,7 @@ td.numeric {
 .config-field input[type=checkbox] {
     width: 17px;
     height: 17px;
+    margin: 10px 0;
     accent-color: var(--primary)
 }
 
@@ -1112,6 +1159,10 @@ main.overview-main {
     .config-fields {
         grid-template-columns: 1fr
     }
+
+    .config-field:nth-last-child(2) {
+        border-bottom: 1px solid #3a3a3a
+    }
 }
 
 @media(max-width:760px) {
@@ -1218,10 +1269,6 @@ main.overview-main {
 
     .config-field {
         gap: 10px
-    }
-
-    .config-field label {
-        font-size: 14px
     }
 
     .config-field input {

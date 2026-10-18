@@ -89,6 +89,17 @@ class SettingsTests(unittest.TestCase):
             config = client.get('/api/config').json()
             self.assertFalse(config['pending_restart'])
             self.assertEqual(config['fields']['eye_manager']['vein_seed']['nullable'], True)
+            self.assertEqual(set(config['sections']), set(config['saved']))
+            for section, values in config['saved'].items():
+                self.assertTrue(config['sections'][section]['label'])
+                self.assertTrue(config['sections'][section]['description'])
+                self.assertEqual(set(config['fields'][section]), set(values))
+                for name in values:
+                    with self.subTest(section=section, name=name):
+                        metadata = config['fields'][section][name]
+                        self.assertEqual(metadata['label'], name)
+                        self.assertTrue(metadata['description'])
+                        self.assertIn(name, config['defaults'][section])
             raw = deepcopy(config['saved'])
             raw['tracker']['min_hits_to_confirm'] = 4
             response = client.put('/api/config', json={'values': raw, 'revision': config['revision']})

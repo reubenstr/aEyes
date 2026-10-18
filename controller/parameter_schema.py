@@ -4,94 +4,170 @@ from __future__ import annotations
 import math
 import re
 import types
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from typing import get_type_hints, get_args, get_origin
+
+
+def _described(description: str):
+    return field(metadata={"description": description})
+
 
 @dataclass
 class SystemParams:
-    refresh_rate_hz: int
+    refresh_rate_hz: int = _described(
+        "Sets the camera frame-rate limit and controller command publication rate in hertz.")
 
 
 @dataclass
 class PublisherParams:
-    socket_port: int
-    socket_address: str
+    socket_port: int = _described(
+        "Sets the ZMQ port used to broadcast commands, which must match the port on every eye unit.")
+    socket_address: str = _described(
+        "Selects the local address used to broadcast eye commands, with * binding to all interfaces.")
 
 
 @dataclass
 class TrackerParams:
-    base_max_distance: float
-    depth_scale_factor: float
-    embedding_weight: float
-    min_hits_to_confirm: int
-    min_hits_to_confirm_reacquiring_tracks: int
-    max_missing_confirmed: int
-    max_missing_tentative: int
-    reid_window_frames: int
-    reid_max_distance: float
-    ema_alpha: float
-    embedding_ema_keep: float
-    static_window: int
-    static_speed_thresh_mps: float
-    mahalanobis_gate: float
-    min_detection_confidence: float
-    min_bbox_iou: float
-    depth_grace_s: float
-    coast_time_s: float
+    base_max_distance: float = _described(
+        "Sets the base distance in meters allowed between a predicted track and a matching detection.")
+    depth_scale_factor: float = _described(
+        "Expands the matching distance by this many meters per meter of forward depth beyond one meter.")
+    embedding_weight: float = _described(
+        "Weights optional appearance embeddings when ranking matches that pass the spatial gates.")
+    min_hits_to_confirm: int = _described(
+        "Sets the consecutive matched 3D observations required before a new face track becomes public.")
+    min_hits_to_confirm_reacquiring_tracks: int = _described(
+        "Sets the consecutive matched 3D observations required before a lost face track becomes public again.")
+    max_missing_confirmed: int = _described(
+        "Sets the confirmed-track missing timeout in nominal frames, converted to seconds using refresh_rate_hz.")
+    max_missing_tentative: int = _described(
+        "Sets the unconfirmed-track missing timeout in nominal frames, converted to seconds using refresh_rate_hz.")
+    reid_window_frames: int = _described(
+        "Sets how long lost tracks remain available for identity recovery, in nominal frames converted to seconds using refresh_rate_hz.")
+    reid_max_distance: float = _described(
+        "Sets the maximum distance in meters for matching a detection to a predicted lost track.")
+    ema_alpha: float = _described(
+        "Controls output-position smoothing, with lower values producing smoother but slower responses.")
+    embedding_ema_keep: float = _described(
+        "Sets the fraction of the existing appearance embedding retained when an optional new embedding arrives.")
+    static_window: int = _described(
+        "Sets the uninterrupted stillness window before excluding a face from eye assignment, in nominal frames converted to seconds using refresh_rate_hz.")
+    static_speed_thresh_mps: float = _described(
+        "Sets the maximum tracked speed in meters per second for a face to count as still.")
+    mahalanobis_gate: float = _described(
+        "Limits the squared uncertainty-adjusted distance allowed between a predicted track and a matching 3D detection.")
+    min_detection_confidence: float = _described(
+        "Rejects detections whose confidence is below this threshold from zero to one.")
+    min_bbox_iou: float = _described(
+        "Sets the minimum image-box intersection over union needed to keep a track matched during a brief depth failure.")
+    depth_grace_s: float = _described(
+        "Sets how many seconds image-box matches can preserve identity after the last valid 3D observation.")
+    coast_time_s: float = _described(
+        "Caps how many seconds public track positions are extrapolated beyond the last valid 3D observation.")
 
 
 @dataclass
 class KalmanParams:
-    acceleration_noise: float
-    measurement_std_lateral: float
-    measurement_std_depth: float
+    acceleration_noise: float = _described(
+        "Sets motion-model uncertainty in square meters per cubic second, with higher values allowing faster velocity changes.")
+    measurement_std_lateral: float = _described(
+        "Sets the assumed left-right and vertical measurement standard deviation in meters.")
+    measurement_std_depth: float = _described(
+        "Sets the assumed forward-depth measurement standard deviation in meters.")
 
 
 @dataclass
 class AssignerParams:
-    assign_interval_s: float
+    assign_interval_s: float = _described(
+        "Sets the minimum seconds between assigning extra eyes to faces that already have an eye.")
 
 
 @dataclass
 class EyeManagerParams:
-    color_in_rate: float
-    color_out_rate: float
-    blink_rate: float
-    radius: float
-    curvature: float
-    iris_size: float
-    pupil_size: float
-    is_cat_eye: bool
-    pupil_color: tuple[int, int, int]
-    sclera_color: tuple[int, int, int]
-    vein_color: tuple[int, int, int]
-    vein_count: int
-    vein_seed: int | None
-    iris_accent_hue_offset: float
-    iris_accent_lightness: float
-    iris_accent_saturation: float
-    iris_center_hue_offset: float
-    iris_center_lightness: float
-    iris_center_saturation: float
-    iris_striation_hue_offset: float
-    iris_striation_lightness: float
-    iris_striation_saturation: float
-    eyelid_near_distance_m: float
-    eyelid_far_distance_m: float
-    eyelid_near_openness: float
-    eyelid_far_openness: float
-    eyelid_neutral_openness: float
-    eyelid_smoothing_rate: float
+    color_in_rate: float = _described(
+        "Controls how quickly eye colors transition to an assigned face's palette, with higher values fading faster.")
+    color_out_rate: float = _described(
+        "Controls how quickly eye colors return to the neutral palette after losing a face, with higher values fading faster.")
+    blink_rate: float = _described(
+        "Sets the speed of the blink triggered by a new face assignment in complete blinks per second.")
+    radius: float = _described(
+        "Sets the outer rendered eye radius in shader coordinates independently of iris and pupil size.")
+    curvature: float = _described(
+        "Controls the rendered eye's surface distortion from zero to one.")
+    iris_size: float = _described(
+        "Controls the rendered iris size from zero to one.")
+    pupil_size: float = _described(
+        "Controls the pupil size relative to the iris from zero to one.")
+    is_cat_eye: bool = _described(
+        "Enables the renderer's cat-eye shape.")
+    pupil_color: tuple[int, int, int] = _described(
+        "Sets the pupil color as red, green, and blue channels from 0 to 255.")
+    sclera_color: tuple[int, int, int] = _described(
+        "Sets the eye-white color as red, green, and blue channels from 0 to 255.")
+    vein_color: tuple[int, int, int] = _described(
+        "Sets the vein color as red, green, and blue channels from 0 to 255.")
+    vein_count: int = _described(
+        "Sets the number of primary veins from 0 to 24, with zero hiding all veins and branches.")
+    vein_seed: int | None = _described(
+        "Sets the vein-pattern seed, with Auto using each eye's ID and an integer sharing one pattern across eyes.")
+    iris_accent_hue_offset: float = _described(
+        "Shifts the iris accent hue relative to the assigned face's base hue, measured in turns around the color wheel.")
+    iris_accent_lightness: float = _described(
+        "Sets the iris accent lightness from zero for black to one for white.")
+    iris_accent_saturation: float = _described(
+        "Sets the iris accent saturation from zero for gray to one for full color.")
+    iris_center_hue_offset: float = _described(
+        "Shifts the iris center hue relative to the assigned face's base hue, measured in turns around the color wheel.")
+    iris_center_lightness: float = _described(
+        "Sets the iris center lightness from zero for black to one for white.")
+    iris_center_saturation: float = _described(
+        "Sets the iris center saturation from zero for gray to one for full color.")
+    iris_striation_hue_offset: float = _described(
+        "Shifts the iris streak hue relative to the assigned face's base hue, measured in turns around the color wheel.")
+    iris_striation_lightness: float = _described(
+        "Sets the iris streak lightness from zero for black to one for white.")
+    iris_striation_saturation: float = _described(
+        "Sets the iris streak saturation from zero for gray to one for full color.")
+    eyelid_near_distance_m: float = _described(
+        "Sets the target distance in meters at or below which an eye uses the near eyelid opening.")
+    eyelid_far_distance_m: float = _described(
+        "Sets the target distance in meters at or beyond which an eye uses the far eyelid opening.")
+    eyelid_near_openness: float = _described(
+        "Sets the eyelid opening for nearby targets from zero for closed to one for fully open.")
+    eyelid_far_openness: float = _described(
+        "Sets the eyelid opening for distant targets from zero for closed to one for fully open.")
+    eyelid_neutral_openness: float = _described(
+        "Sets the resting eyelid opening when no face is assigned, from zero for closed to one for fully open.")
+    eyelid_smoothing_rate: float = _described(
+        "Controls how quickly resting eyelids follow distance changes, with higher values responding faster.")
 
 
 @dataclass
 class Params:
-    system: SystemParams
-    publisher: PublisherParams
-    tracker: TrackerParams
-    kalman: KalmanParams
-    assigner: AssignerParams
-    eye_manager: EyeManagerParams
+    system: SystemParams = field(metadata={
+        "label": "System",
+        "description": "Controls the timing shared by camera capture, tracking, and eye command publication.",
+    })
+    publisher: PublisherParams = field(metadata={
+        "label": "Publisher",
+        "description": "Configures ZMQ command broadcasts to the eye units, whose network settings must be updated separately to match.",
+    })
+    tracker: TrackerParams = field(metadata={
+        "label": "Tracker",
+        "description": "Controls how face detections become stable tracks, retain their identities, and recover after missing observations.",
+    })
+    kalman: KalmanParams = field(metadata={
+        "label": "Kalman",
+        "description": "Balances motion prediction against measurement uncertainty when estimating each face's 3D position and velocity.",
+    })
+    assigner: AssignerParams = field(metadata={
+        "label": "Assigner",
+        "description": "Controls how quickly additional eyes are allocated after visible faces receive initial coverage.",
+    })
+    eye_manager: EyeManagerParams = field(metadata={
+        "label": "Eye Manager",
+        "description": "Controls eye appearance, face-based color palettes, assignment blinks, and eyelid opening by target distance.",
+    })
 
 
 def _validate(p: Params) -> None:
@@ -227,16 +303,24 @@ def parse_params(raw: dict, reserved_ports=()) -> Params:
 
 
 def form_metadata() -> dict:
-    """Types drive controls; server-side validation remains authoritative."""
+    """Describe parameter controls and purpose without loading configuration values."""
     result = {}
     for section, cls in get_type_hints(Params).items():
         result[section] = {}
-        for name, annotation in get_type_hints(cls).items():
+        annotations = get_type_hints(cls)
+        for parameter in fields(cls):
+            name = parameter.name
+            annotation = annotations[name]
             nullable = type(None) in get_args(annotation)
             kind = ("rgb" if get_origin(annotation) is tuple else
                     "boolean" if annotation is bool else "string" if annotation is str else
                     "integer" if annotation is int or nullable else "number")
             result[section][name] = {"type": kind, "nullable": nullable,
-                                     "label": name.replace("_", " ").capitalize()}
+                                     "label": name,
+                                     "description": parameter.metadata["description"]}
     return result
 
+
+def section_metadata() -> dict:
+    """Describe every settings section for API consumers."""
+    return {section.name: dict(section.metadata) for section in fields(Params)}

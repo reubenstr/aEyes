@@ -4,7 +4,6 @@ import type { ConfigDescription, ConfigValues, ConfigValue, Telemetry } from './
 
 const clone = <T,>(v: T): T => structuredClone(v);
 const format = (v: ConfigValue | undefined) => v === undefined ? '—' : v === null ? 'Auto' : Array.isArray(v) ? v.join(', ') : String(v);
-const labels: Record<string, string> = { system: 'System', publisher: 'Publisher', tracker: 'Tracker', kalman: 'Kalman', assigner: 'Assigner', eye_manager: 'Eye Manager' };
 
 export function Settings({ state }: { state: Telemetry | null }) {
   const [config, setConfig] = useState<ConfigDescription | null>(null);
@@ -53,7 +52,7 @@ export function Settings({ state }: { state: Telemetry | null }) {
     finally { setBusy(false); }
   }
   return <div className="settings">
-    <section className="panel settings-intro"><div><h2>Controller Configuration</h2><p>Changes are validated and saved to params.yaml. Restart the running application to apply them.</p></div>
+    <section className="panel settings-intro"><div><h2>Controller Configuration</h2><p>Compare editable values with the active application and reset defaults. Save to params.yaml, then restart the running application to apply changes.</p></div>
       <span className={`pill ${pending ? 'warning' : running ? 'good' : ''}`}>{!running ? 'No active application' : pending ? 'Restart pending' : 'Settings active'}</span></section>
     {source === 'demo' && <div className="notice">Simulation source · Settings can be saved. Restart main.py --demo in its terminal to apply them.</div>}
     {error && <div className="notice error" role="alert">{error} <button className="subtle" onClick={() => window.location.reload()}>Reload settings</button></div>}
@@ -66,15 +65,27 @@ export function Settings({ state }: { state: Telemetry | null }) {
     </div></div>
     {!restartAvailable && source !== 'demo' && <p className="muted">Restart from this screen requires the installed systemd integration. For manual development, restart main.py in its terminal after saving.</p>}
     {Object.entries(config.fields).map(([section, fields]) => <section className="panel config-section" key={section}>
-      <div className="config-heading"><h2>{labels[section] ?? section}</h2>
-        {section === 'publisher' && <p>Eye-side networking must be updated separately when publisher settings change.</p>}</div>
+      <div className="config-heading"><h2>{config.sections[section].label}</h2>
+        <p>{config.sections[section].description}</p></div>
       <div className="config-fields">{Object.entries(fields).map(([name, metadata]) => {
         const value = draft[section][name], id = `${section}-${name}`;
         const active = activeValues?.[section]?.[name];
-        return <div className="config-field" key={name}><div><label htmlFor={id}>{metadata.label}</label><code>{name}</code><small>Active: {format(active)}</small></div>
-          {metadata.type === 'boolean' ? <input id={id} type="checkbox" checked={Boolean(value)} disabled={disabled} onChange={e => update(section, name, e.target.checked)} />
-            : metadata.type === 'rgb' ? <div className="rgb-input"><span className="swatch" style={{ background: `rgb(${(value as number[]).join(',')})` }} />{(value as number[]).map((channel, i) => <input key={i} aria-label={`${metadata.label} ${['red','green','blue'][i]}`} type="number" min="0" max="255" step="1" value={Number.isFinite(channel) ? channel : ''} disabled={disabled} onChange={e => { const rgb = [...value as number[]]; rgb[i] = e.target.value === '' ? NaN : Number(e.target.value); update(section, name, rgb); }} />)}</div>
-            : <div className="value-input"><input id={id} type={metadata.type === 'string' ? 'text' : 'number'} step={metadata.type === 'integer' ? '1' : 'any'} value={value === null || (typeof value === 'number' && !Number.isFinite(value)) ? '' : String(value)} placeholder={metadata.nullable ? 'Auto' : ''} disabled={disabled} onChange={e => update(section, name, metadata.type === 'string' ? e.target.value : e.target.value === '' ? metadata.nullable ? null : NaN : Number(e.target.value))} />{metadata.nullable && <button className="subtle" disabled={disabled} onClick={() => update(section, name, null)}>Auto</button>}</div>}
+        return <div className="config-field" key={name}>
+          <div className="config-details">
+            <label id={`${id}-label`} htmlFor={metadata.type === 'rgb' ? `${id}-0` : id}><code>{metadata.label}</code></label>
+            <p id={`${id}-description`} className="config-description">{metadata.description}</p>
+          </div>
+          <div className="config-values">
+            <div className="config-edit"><span className="config-value-label">Value</span>
+              {metadata.type === 'boolean' ? <input id={id} aria-describedby={`${id}-description`} type="checkbox" checked={Boolean(value)} disabled={disabled} onChange={e => update(section, name, e.target.checked)} />
+                : metadata.type === 'rgb' ? <div className="rgb-input" role="group" aria-labelledby={`${id}-label`} aria-describedby={`${id}-description`}><span className="swatch" style={{ background: `rgb(${(value as number[]).join(',')})` }} />{(value as number[]).map((channel, i) => <input id={`${id}-${i}`} key={i} aria-label={`${metadata.label} ${['red','green','blue'][i]}`} aria-describedby={`${id}-description`} type="number" min="0" max="255" step="1" value={Number.isFinite(channel) ? channel : ''} disabled={disabled} onChange={e => { const rgb = [...value as number[]]; rgb[i] = e.target.value === '' ? NaN : Number(e.target.value); update(section, name, rgb); }} />)}</div>
+                : <div className="value-input"><input id={id} aria-describedby={`${id}-description`} type={metadata.type === 'string' ? 'text' : 'number'} step={metadata.type === 'integer' ? '1' : 'any'} value={value === null || (typeof value === 'number' && !Number.isFinite(value)) ? '' : String(value)} placeholder={metadata.nullable ? 'Auto' : ''} disabled={disabled} onChange={e => update(section, name, metadata.type === 'string' ? e.target.value : e.target.value === '' ? metadata.nullable ? null : NaN : Number(e.target.value))} />{metadata.nullable && <button className="subtle" disabled={disabled} onClick={() => update(section, name, null)}>Auto</button>}</div>}
+            </div>
+            <dl className="config-reference-values">
+              <div><dt>Active</dt><dd><code>{format(active)}</code></dd></div>
+              <div><dt>Default</dt><dd><code>{format(config.defaults[section][name])}</code></dd></div>
+            </dl>
+          </div>
         </div>;
       })}</div></section>)}
     <section className="panel geometry-settings"><h2>Geometry</h2><p>Read only. Positions, camera mounting and pivot offsets come from config.py. All values are meters.</p><div className="table-wrap"><table><thead><tr><th>Eye</th><th>X</th><th>Y</th><th>Z</th><th>Pitch pivot offset</th></tr></thead><tbody>{config.geometry.eyes.map(eye => <tr key={eye.eye_id}><td>E{eye.eye_id}</td><td>{eye.position.x.toFixed(4)}</td><td>{eye.position.y.toFixed(4)}</td><td>{eye.position.z.toFixed(4)}</td><td>{Object.values(eye.pitch_pivot_offset).join(' / ')}</td></tr>)}</tbody></table></div><p>Camera: {config.geometry.camera.x}, {config.geometry.camera.y}, {config.geometry.camera.z} · FOV {config.geometry.camera.horizontal_fov}° × {config.geometry.camera.vertical_fov}°</p></section>

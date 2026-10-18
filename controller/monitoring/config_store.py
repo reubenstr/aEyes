@@ -8,7 +8,7 @@ from threading import RLock
 
 import yaml
 
-from parameter_schema import parse_params, form_metadata
+from parameter_schema import parse_params, form_metadata, section_metadata
 from .contracts import revision
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +45,7 @@ class ConfigStore:
                 "pending_restart": active is None
                 or revision(active) != revision(saved),
                 "fields": form_metadata(),
+                "sections": section_metadata(),
             }
 
     def save(self, values, expected_revision):

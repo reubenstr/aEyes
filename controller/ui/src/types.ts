@@ -34,6 +34,7 @@ export type ConfigValues = Record<string, Record<string, ConfigValue>>;
 export type ConfigDescription = {
   saved: ConfigValues; active: ConfigValues | null; defaults: ConfigValues;
   revision: string; active_revision: string | null; pending_restart: boolean;
-  fields: Record<string, Record<string, { type: string; label: string; nullable: boolean }>>;
+  sections: Record<string, { label: string; description: string }>;
+  fields: Record<string, Record<string, { type: string; label: string; description: string; nullable: boolean }>>;
   geometry: Geometry; source: ApplicationSource | null; restart_available: boolean;
 };
