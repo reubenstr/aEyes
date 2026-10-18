@@ -180,7 +180,7 @@ class EyeManager:
                 # ))
             else:
                 state.yaw = 0.0
-                state.pitch = 0.0
+                state.pitch = 22.5
                 state.rotation = 0.0
 
     # ------------------------------------------------------------------
