@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import { Settings } from "./Settings";
 import { EyePreview } from "./EyePreview";
 import { useTelemetry } from "./useTelemetry";
@@ -36,6 +37,10 @@ function Dot({ good }: { good: boolean }) {
 
 function Camera({ state }: { state: Telemetry | null }) {
   const [retry, setRetry] = useState(0);
+  const [width, setWidth] = useState<number | null>(null);
+  const [resizing, setResizing] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; width: number } | null>(null);
   const available = state?.controller.status === "running" && state.camera.available;
   const streaming = available && state?.camera.status === "streaming";
   const simulation = state?.source === "demo" && state.controller.status === "running";
@@ -44,8 +49,59 @@ function Camera({ state }: { state: Telemetry | null }) {
     const timer = setInterval(() => setRetry((v) => v + 1), 3000);
     return () => clearInterval(timer);
   }, [available, streaming]);
+  const resize = (nextWidth: number) => {
+    const panel = panelRef.current!;
+    const stage = panel.parentElement!;
+    const bounds = panel.getBoundingClientRect();
+    const stageBounds = stage.getBoundingClientRect();
+    const style = getComputedStyle(stage);
+    let left = stageBounds.left + (parseFloat(style.paddingLeft) || 0);
+    let maxWidth = bounds.right - left;
+    if (window.innerWidth > 1000) {
+      const eyes = stage.querySelector(".eye-column");
+      if (eyes) left = eyes.getBoundingClientRect().right + (parseFloat(style.columnGap) || 0);
+      const image = panel.querySelector(".camera-image")!.getBoundingClientRect();
+      const maxHeight = stageBounds.bottom - (parseFloat(style.paddingBottom) || 0) - bounds.top;
+      const heightLimit = (maxHeight - (bounds.height - image.height)) * 16 / 9
+        + bounds.width - image.width;
+      maxWidth = Math.min(bounds.right - left, heightLimit);
+    }
+    maxWidth = Math.max(1, maxWidth);
+    setWidth(Math.min(maxWidth, Math.max(Math.min(280, maxWidth), nextWidth)));
+  };
+  const startResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || drag.current) return;
+    event.preventDefault();
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      width: panelRef.current!.getBoundingClientRect().width,
+    };
+    setResizing(true);
+  };
+  const moveResize = (event: PointerEvent<HTMLButtonElement>) => {
+    const start = drag.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const horizontal = start.x - event.clientX;
+    const vertical = (event.clientY - start.y) * 16 / 9;
+    resize(start.width + (Math.abs(horizontal) >= Math.abs(vertical) ? horizontal : vertical));
+  };
+  const stopResize = (event: PointerEvent<HTMLButtonElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
   return (
-    <section className="panel camera-panel" aria-label="Camera">
+    <section
+      ref={panelRef}
+      className={`panel camera-panel${resizing ? " is-resizing" : ""}`}
+      style={width === null ? undefined : { width }}
+      aria-label="Camera"
+    >
       <div className="camera-image">
         {available && <img
           src={`/api/camera.mjpeg?session=${state?.session_id ?? ""}&retry=${retry}`}
@@ -84,6 +140,32 @@ function Camera({ state }: { state: Telemetry | null }) {
             : `${Math.round(state.camera.age_s * 1000)} ms capture age`}
         </span>
       </div>
+      <button
+        type="button"
+        className="camera-resize-handle"
+        aria-label="Resize camera preview"
+        title="Drag left or down to enlarge. Use arrow keys to resize, or double-click to reset."
+        onPointerDown={startResize}
+        onPointerMove={moveResize}
+        onPointerUp={stopResize}
+        onPointerCancel={stopResize}
+        onLostPointerCapture={stopResize}
+        onDoubleClick={() => setWidth(null)}
+        onKeyDown={(event) => {
+          const direction = { ArrowLeft: 1, ArrowDown: 1, ArrowRight: -1, ArrowUp: -1 }[event.key];
+          if (direction) {
+            event.preventDefault();
+            resize(panelRef.current!.getBoundingClientRect().width + direction * 32);
+          } else if (event.key === "Home") {
+            event.preventDefault();
+            setWidth(null);
+          }
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M7 11v6h6M11 7h6v6M7 17 17 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
     </section>
   );
 }
@@ -161,7 +243,6 @@ function EyeCard({
               : assigned ? "No fresh face crop" : "Waiting for a face"}
           </div>
         )}
-        <span>{url && failed !== url ? "Live crop" : "—"}</span>
       </div>
     </article>
   );
@@ -254,7 +335,7 @@ export default function App() {
         </b>
       </span>
       <span className="device-badge">
-        {live ? state?.source === "demo" ? "SIMULATION" : "AEYES / LIVE CAMERA" : "AEYES / WAITING"}
+        {live ? state?.source === "demo" ? "SIMULATION" : "LIVE CAMERA" : "WAITING"}
       </span>
     </div>
   );

@@ -51,7 +51,7 @@ describe('application dashboard', () => {
   it('waits for an application without showing generated data or requesting camera images', () => {
     vi.mocked(useTelemetry).mockReturnValue({ state: null, connected: true });
     render(<App />);
-    expect(screen.getByText('AEYES / WAITING')).toBeTruthy();
+    expect(screen.getByText('WAITING')).toBeTruthy();
     expect(screen.getByText('Waiting for main.py (live or --demo) to publish data.')).toBeTruthy();
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByText('Waiting for application telemetry.')).toBeTruthy();
@@ -89,5 +89,88 @@ describe('application dashboard', () => {
     expect(screen.queryByText('15.0')).toBeNull();
     expect(screen.getByText('online')).toBeTruthy();
     expect(screen.getByText(/Application telemetry stopped/)).toBeTruthy();
+  });
+});
+
+describe('camera preview resizing', () => {
+  const setup = () => {
+    vi.mocked(useTelemetry).mockReturnValue({ state: state(), connected: true });
+    render(<App />);
+    const panel = screen.getByRole('region', {name: 'Camera'});
+    const handle = within(panel).getByRole('button', {name: 'Resize camera preview'});
+    const rectangle = (x: number, y: number, width: number, height: number): DOMRect => ({
+      x, y, width, height, left: x, top: y, right: x + width, bottom: y + height, toJSON: () => ({}),
+    });
+    const panelWidth = () => parseFloat(panel.style.width) || 432;
+    vi.spyOn(panel, 'getBoundingClientRect').mockImplementation(() =>
+      rectangle(1004 - panelWidth(), 100, panelWidth(), (panelWidth() - 18) * 9 / 16 + 48));
+    vi.spyOn(panel.parentElement!, 'getBoundingClientRect').mockReturnValue(rectangle(0, 84, 1024, 816));
+    vi.spyOn(screen.getByRole('complementary', {name: 'Eyes 1 to 6'}), 'getBoundingClientRect')
+      .mockReturnValue(rectangle(20, 200, 360, 600));
+    vi.spyOn(panel.querySelector('.camera-image')!, 'getBoundingClientRect').mockImplementation(() =>
+      rectangle(1013 - panelWidth(), 109, panelWidth() - 18, (panelWidth() - 18) * 9 / 16));
+    handle.setPointerCapture = vi.fn();
+    handle.hasPointerCapture = vi.fn(() => true);
+    handle.releasePointerCapture = vi.fn();
+    const pointer = (type: string, x: number, y = 400, pointerId = 1, button = 0) => {
+      fireEvent(handle, Object.assign(new MouseEvent(type, {
+        bubbles: true, clientX: x, clientY: y, button,
+      }), { pointerId }));
+    };
+    return { panel, handle, pointer };
+  };
+
+  it('grows leftward and downward, captures the pointer, and stops when released', () => {
+    const { panel, handle, pointer } = setup();
+    pointer('pointerdown', 572);
+    expect(handle.setPointerCapture).toHaveBeenCalledWith(1);
+    pointer('pointermove', 472);
+    expect(panel.style.width).toBe('532px');
+    pointer('pointermove', 572, 490);
+    expect(panel.style.width).toBe('592px');
+    pointer('pointerup', 572, 490);
+    expect(handle.releasePointerCapture).toHaveBeenCalledWith(1);
+    pointer('pointermove', 900);
+    expect(panel.style.width).toBe('592px');
+  });
+
+  it('limits the width to the available space and keeps a usable minimum', () => {
+    const { panel, pointer } = setup();
+    pointer('pointerdown', 572);
+    pointer('pointermove', -1000);
+    expect(panel.style.width).toBe('624px');
+    pointer('pointermove', 1500);
+    expect(panel.style.width).toBe('280px');
+    pointer('pointercancel', 1500);
+    pointer('pointermove', 300);
+    expect(panel.style.width).toBe('280px');
+    expect(panel.classList.contains('is-resizing')).toBe(false);
+  });
+
+  it('ignores secondary buttons and other pointers, and handles lost capture', () => {
+    const { panel, pointer } = setup();
+    pointer('pointerdown', 572, 400, 1, 2);
+    pointer('pointermove', 472);
+    expect(panel.style.width).toBe('');
+    pointer('pointerdown', 572);
+    pointer('pointermove', 472, 400, 2);
+    expect(panel.style.width).toBe('');
+    pointer('lostpointercapture', 572);
+    pointer('pointermove', 472);
+    expect(panel.style.width).toBe('');
+    expect(panel.classList.contains('is-resizing')).toBe(false);
+  });
+
+  it('supports keyboard resizing and resetting to the default size', () => {
+    const { panel, handle } = setup();
+    fireEvent.keyDown(handle, {key: 'ArrowLeft'});
+    expect(panel.style.width).toBe('464px');
+    fireEvent.keyDown(handle, {key: 'ArrowUp'});
+    expect(panel.style.width).toBe('432px');
+    fireEvent.doubleClick(handle);
+    expect(panel.style.width).toBe('');
+    fireEvent.keyDown(handle, {key: 'ArrowDown'});
+    fireEvent.keyDown(handle, {key: 'Home'});
+    expect(panel.style.width).toBe('');
   });
 });

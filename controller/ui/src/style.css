@@ -380,6 +380,29 @@ main {
     gap: 7px
 }
 
+.camera-resize-handle {
+    position: absolute;
+    bottom: 3px;
+    left: 3px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: nesw-resize;
+    touch-action: none;
+    user-select: none;
+    outline-offset: -3px
+}
+
+.camera-resize-handle:hover,
+.camera-resize-handle:focus-visible {
+    color: var(--primary-bright)
+}
+
 .scene-panel {
     position: relative;
     min-height: 330px;
@@ -449,7 +472,7 @@ main {
     gap: 8px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    padding: 10px;
+    padding: 8px;
     background: #2b2b2b;
     min-width: 0;
     font-size: 12px
@@ -492,7 +515,7 @@ main {
 
 .eye-shape {
     display: block;
-    width: 96px;
+    width: 64px;
     max-width: 100%;
     height: auto;
     aspect-ratio: 1;
@@ -514,6 +537,8 @@ main {
 
 .face-crop {
     min-width: 0;
+    width: 100%;
+    aspect-ratio: 1;
     background: #1c1c1c;
     border: 1px solid #404040;
     border-radius: 4px;
@@ -524,26 +549,18 @@ main {
 }
 
 .face-crop img {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    height: auto;
-    max-height: 104px;
+    height: 100%;
+    display: block;
     object-fit: contain;
     background: #151515
 }
 
-.face-crop>span {
-    position: absolute;
-    bottom: 3px;
-    right: 4px;
-    font-size: 9px;
-    color: #e9e9e9;
-    background: #171717eb;
-    padding: 2px 4px;
-    border-radius: 2px
-}
-
 .crop-placeholder {
-    min-height: 80px;
+    position: absolute;
+    inset: 0;
     display: grid;
     place-items: center;
     padding: 6px;
@@ -997,13 +1014,21 @@ main.overview-main {
 .overview-stage>.camera-panel {
     position: relative;
     z-index: 2;
-    grid-column: 3;
+    grid-column: 2 / -1;
     grid-row: 1 / -1;
     align-self: start;
+    justify-self: end;
     min-width: 0;
-    width: 100%;
+    width: clamp(336px, 32.4vw, 432px);
+    max-width: 100%;
+    margin-left: auto;
     display: flex;
     flex-direction: column
+}
+
+.overview-stage>.camera-panel.is-resizing {
+    z-index: 3;
+    user-select: none
 }
 
 .overview-stage .camera-image {
@@ -1011,7 +1036,7 @@ main.overview-main {
 }
 
 .overview-stage .camera-meta {
-    padding: 8px;
+    padding: 8px 8px 8px 38px;
     gap: 4px;
     font-size: 10px
 }
@@ -1270,7 +1295,6 @@ main.overview-main {
 
     .overview-top,
     .eye-column,
-    .overview-stage>.camera-panel,
     .overview-tracking {
         position: static;
         width: 100%;
@@ -1320,7 +1344,7 @@ main.overview-main {
     .eye-card {
         grid-template-columns: minmax(54px, .8fr) minmax(80px, 1fr) minmax(42px, 1fr) minmax(48px, 1fr);
         gap: 6px;
-        padding: 8px
+        padding: 6px
     }
 
     .eye-identity b {
