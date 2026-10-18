@@ -1,0 +1,104 @@
+# Behavioral parameters for the aEyes controller.
+# Edit this file to tune the system without touching Python source.
+# Physical/geometric constants (eye positions, pivot offsets, FOV) live in config.py.
+
+# ---------------------------------------------------------------------------
+# System timing
+# ---------------------------------------------------------------------------
+system:
+  refresh_rate_hz: 15        # Main loop publish rate [Hz]. Higher = more CPU, lower = laggier.
+
+# ---------------------------------------------------------------------------
+# Network / ZMQ publisher
+# ---------------------------------------------------------------------------
+publisher:
+  socket_port: 9000          # ZMQ PUB port. Must match SOCKET_PORT on all Pi eye units.
+  socket_address: "*"        # Bind address. "*" = all interfaces.
+
+# ---------------------------------------------------------------------------
+# Face tracker — matching gate
+# ---------------------------------------------------------------------------
+tracker:
+  base_max_distance: 0.4     # Match gate radius at 1m depth [m].  range: 0.1–1.0
+  depth_scale_factor: 0.15   # Gate growth per meter of depth [m/m].  range: 0.0–0.5
+  embedding_weight: 0.3      # Appearance ranking weight after independent spatial gates [0-1].
+
+  # Confirmation counts actual observations. Missing/lost windows below are
+  # nominal frames converted to seconds using system.refresh_rate_hz.
+  min_hits_to_confirm: 30                      # Frames before tentative -> confirmed.  range: 1-60
+  min_hits_to_confirm_reacquiring_tracks: 3    # Only LOST tracks need reconfirmation.
+  max_missing_confirmed: 30                    # Missing grace = value / refresh_rate_hz seconds.
+  max_missing_tentative: 5                     # Missing grace = value / refresh_rate_hz seconds.
+
+  # Re-identification
+  reid_window_frames: 45     # Lost retention = value / refresh_rate_hz seconds.
+  reid_max_distance: 1.0     # Spatial search radius for re-ID matching [m].  range: 0.5–2.0
+
+  # Output smoothing
+  ema_alpha: 0.4             # EMA smoothing on output position. Lower = smoother, laggier.  range: 0–1
+  embedding_ema_keep: 0.7    # Weight of existing embedding in running average.  range: 0–1
+                             # New embedding weight = 1 - embedding_ema_keep.
+
+  # Static-face detection — faces whose rolling-max Kalman speed stays below
+  # static_speed_thresh_mps for static_window / refresh_rate_hz seconds are
+  # classified as static and excluded from eye assignment.
+  static_window: 1000            # Nominal frames defining the rolling time window.
+  static_speed_thresh_mps: 0.15  # Max speed to be considered static [m/s].  range: 0.01–1.0
+  mahalanobis_gate: 11.345       # Squared 3D innovation gate (99% chi-square).
+  min_detection_confidence: 0.5
+  min_bbox_iou: 0.2             # Image-only association during a brief depth failure.
+  depth_grace_s: 0.5            # Maximum time to associate without a valid depth sample.
+  coast_time_s: 0.25            # Maximum public extrapolation beyond the last valid XYZ.
+
+# ---------------------------------------------------------------------------
+# Kalman filter (3D constant-velocity)
+# ---------------------------------------------------------------------------
+kalman:
+  acceleration_noise: 1.5       # Continuous velocity diffusion [m^2/s^3].
+  measurement_std_lateral: 0.05 # Lateral/vertical standard deviation [m]; squared into R.
+  measurement_std_depth: 0.20   # Forward (project X) standard deviation [m]; squared into R.
+
+# ---------------------------------------------------------------------------
+# Eye assigner
+# ---------------------------------------------------------------------------
+assigner:
+  assign_interval_s: 0.5     # Min seconds between assigning extra eyes to already-covered faces.
+
+# ---------------------------------------------------------------------------
+# Eye manager — animation
+# ---------------------------------------------------------------------------
+eye_manager:
+  color_in_rate: 2.0         # Lerp speed toward face color [units/s]. Higher = faster.
+  color_out_rate: 4.0        # Lerp speed back toward grey [units/s].
+  blink_rate: 1.0            # Blink animation speed on new face assignment [blinks/s].
+
+  # Static appearance. Restart the controller after editing these values.
+  radius: 1.0               # Outer eye radius in shader coordinates; independent of iris/pupil size.
+  curvature: 0.2            # Surface distortion [0-1].
+  iris_size: 0.5            # Iris size [0-1].
+  pupil_size: 0.5           # Pupil size relative to the iris [0-1].
+  is_cat_eye: false
+  pupil_color: [0, 0, 0]    # All colors are RGB [0-255].
+  sclera_color: [214, 207, 199]
+  vein_color: [184, 23, 23]
+  vein_count: 8             # Primary veins [0-24]; 0 disables all veins, including forks.
+  vein_seed: null           # null uses each eye's ID; an integer gives all eyes the same pattern.
+
+  # Palette derived from each assigned face's base hue. Hue offsets are turns.
+  iris_accent_hue_offset: 0.06
+  iris_accent_lightness: 0.30
+  iris_accent_saturation: 0.55
+  iris_center_hue_offset: -0.12
+  iris_center_lightness: 0.55
+  iris_center_saturation: 0.75
+  iris_striation_hue_offset: 0.03
+  iris_striation_lightness: 0.76
+  iris_striation_saturation: 0.65
+
+  # Resting eyelid opening by distance to this eye's assigned target.
+  eyelid_near_distance_m: 0.5
+  eyelid_far_distance_m: 3.0
+  eyelid_near_openness: 1.0
+  eyelid_far_openness: 0.5
+  eyelid_neutral_openness: 0.85
+  eyelid_smoothing_rate: 6.0 # Exponential response [1/s]; higher responds faster.

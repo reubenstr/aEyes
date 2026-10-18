@@ -44,6 +44,7 @@ class CameraAdapterTests(unittest.TestCase):
             frame = detector.poll_frame()
         self.assertAlmostEqual(frame.timestamp, 999.8)
         self.assertEqual(frame.sequence, 17)
+        self.assertEqual(frame.capture_key, '17-249800000')
         self.assertEqual(frame.faces[0].bbox, (0.2, 0.3, 0.4, 0.6))
         self.assertEqual(frame.faces[0].xyz_m, (0.1, -0.2, 2.))
         self.assertEqual(frame.faces[0].confidence, 0.85)
@@ -70,6 +71,23 @@ class CameraAdapterTests(unittest.TestCase):
         result = self.detector([self.message([face])]).poll_frame().faces[0]
         self.assertIsNone(result.bbox)
         self.assertIsNotNone(result.xyz_m)
+
+    def test_reused_sequence_still_has_distinct_capture_identity(self):
+        first = self.message([])
+        second = self.message([])
+        second.getTimestamp = lambda: timedelta(seconds=249.9)
+        self.assertNotEqual(self.detector([first]).poll_frame().capture_key,
+                            self.detector([second]).poll_frame().capture_key)
+
+    def test_shutdown_releases_camera_even_if_pipeline_stop_fails(self):
+        detector = self.module.Detector.__new__(self.module.Detector)
+        detector.pipeline = Mock()
+        detector.pipeline.isRunning.return_value = True
+        detector.pipeline.stop.side_effect = RuntimeError('stop error')
+        detector.device = Mock()
+        with self.assertRaises(RuntimeError):
+            detector.shutdown()
+        detector.device.close.assert_called_once()
 
 
 if __name__ == '__main__':

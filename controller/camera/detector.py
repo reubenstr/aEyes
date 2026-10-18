@@ -55,6 +55,7 @@ class DetectedFrame:
     faces: list[DetectedFace]
     timestamp: float  # Capture time translated to Python's monotonic clock.
     sequence: int
+    capture_key: str | None = None
 
 
 class Detector:
@@ -65,10 +66,13 @@ class Detector:
         model_archive: Path | str = MODEL_ARCHIVE,
         fps_limit: int = FPS_LIMIT,
         enable_visualizer: bool = False,
+        enable_preview: bool = False,
     ) -> None:
         self.model_archive = Path(model_archive)
         self.fps_limit = fps_limit
         self.enable_visualizer = enable_visualizer
+        self.enable_preview = enable_preview
+        self.preview_queue = None
 
         print("Creating OAK-D device...")
         self.visualizer = (
@@ -148,6 +152,8 @@ class Detector:
             )
 
         self.pipeline = pipeline
+        if self.enable_preview:
+            self.preview_queue = nn_with_parser.passthrough.createOutputQueue(maxSize=4, blocking=False)
         self.spatial_detections_queue = spatial_calc.outputDetections.createOutputQueue(
             maxSize=1,
             blocking=False,
@@ -195,7 +201,9 @@ class Detector:
         # getTimestamp() is relative to dai.Clock.now(), not necessarily Python's
         # clock epoch. Preserve capture age while translating between the clocks.
         age = max(0., (dai.Clock.now() - detections_msg.getTimestamp()).total_seconds())
-        return DetectedFrame(faces, monotonic() - age, detections_msg.getSequenceNum())
+        stamp_us = round(detections_msg.getTimestamp().total_seconds() * 1_000_000)
+        sequence = detections_msg.getSequenceNum()
+        return DetectedFrame(faces, monotonic() - age, sequence, f"{sequence}-{stamp_us}")
 
     def poll_faces(self) -> list[DetectedFace] | None:
         frame = self.poll_frame()
@@ -282,8 +290,11 @@ class Detector:
         return dai.ImgFrame.Type.BGR888p
 
     def shutdown(self) -> None:
-        if self.pipeline is not None and self.pipeline.isRunning():
-            self.pipeline.stop()
+        try:
+            if self.pipeline is not None and self.pipeline.isRunning():
+                self.pipeline.stop()
+        finally:
+            self.device.close()
    
 
 ###############################################################################

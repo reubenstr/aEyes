@@ -1,0 +1,2 @@
+# The dashboard can restart only the controller on this machine.
+@USER@ ALL=(root) NOPASSWD: /usr/bin/systemctl restart main.service

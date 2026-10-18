@@ -11,8 +11,14 @@ fi
 USER_NAME="${SUDO_USER:-$USER}"
 USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 USER_BASHRC="$USER_HOME/.bashrc"
-ROOT_DIR="$(pwd -P)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 VENV_DIR="$ROOT_DIR/.venv"
+ETH_IP="192.168.5.100/24"
+
+if [ "$USER_NAME" = root ]; then
+    echo "Run with sudo from the deployment user's account (not a root login)." >&2
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # Create virtual environment as the non-root user
@@ -30,17 +36,15 @@ echo "Installing system GPIO dependencies..."
 apt update
 apt install -y \
     python3-lgpio \
-    python3-gpiozero
+    python3-gpiozero \
+    nginx curl ca-certificates xz-utils iputils-ping sudo rsync
 
 # -----------------------------------------------------------------------------
 # Install requirements as the non-root user
 echo "Installing python dependencies from requirements.txt as $USER_NAME"
 if [ -f "$ROOT_DIR/requirements.txt" ]; then
-    sudo -u "$USER_NAME" bash -lc "
-        source '$VENV_DIR/bin/activate'
-        python -m pip install --upgrade pip
-        python -m pip install -r '$ROOT_DIR/requirements.txt'
-    "
+    sudo -u "$USER_NAME" "$VENV_DIR/bin/python" -m pip install --upgrade pip
+    sudo -u "$USER_NAME" "$VENV_DIR/bin/python" -m pip install -r "$ROOT_DIR/requirements.txt"
 else
     echo "requirements.txt not found!"
     exit 1
@@ -48,8 +52,6 @@ fi
 
 # -----------------------------------------------------------------------------
 # Configure ethernet with static IP
-ETH_IP="192.168.5.100/24"
-
 echo "Setting Ethernet IP to $ETH_IP"
 
 # Find Ethernet connection associated with eth0
@@ -93,10 +95,10 @@ After=multi-user.target
 
 [Service]
 Type=simple
-WorkingDirectory=$USER_HOME/aEyes/controller
+WorkingDirectory="$ROOT_DIR"
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=$USER_HOME/.Xauthority
-ExecStart=$USER_HOME/aEyes/controller/.venv/bin/python $USER_HOME/aEyes/controller/shutdown.py --service
+ExecStart="$VENV_DIR/bin/python" "$ROOT_DIR/shutdown.py" --service
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=10s
@@ -112,43 +114,75 @@ systemctl restart shutdown.service
 echo "Run this command to see the service status: sudo systemctl status shutdown.service"
 echo "Run this command to see live logs: sudo journalctl -u shutdown.service -f"
 
-
-echo ""
-echo "DEV: PREMATURE EXIT. IN DEVELOPMENT, NOT READY FOR SERVICE."
-exit
-
 # -----------------------------------------------------------------------------
-# Install main.service
-echo "Installing service for main.sh"
+# Node 24 LTS and pinned Yarn; build as the deployment user, never as root.
+TASK_TMP="$(mktemp -d)"
+trap 'rm -rf -- "$TASK_TMP"' EXIT
 
-tee /etc/systemd/system/main.service > /dev/null << EOF
-[Unit]
-Description=Main Service
-After=multi-user.target
+if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" != 24 ]; then
+    case "$(dpkg --print-architecture)" in
+        arm64) NODE_ARCH=arm64 ;;
+        amd64) NODE_ARCH=x64 ;;
+        *) echo "Node 24 requires a supported 64-bit OS (arm64 or amd64)." >&2; exit 1 ;;
+    esac
+    curl --fail --silent --show-error https://nodejs.org/dist/index.json -o "$TASK_TMP/node-index.json"
+    NODE_VERSION="$(python3 - "$TASK_TMP/node-index.json" <<'PY'
+import json, sys
+print(next(v['version'] for v in json.load(open(sys.argv[1])) if v['version'].startswith('v24.') and v['lts']))
+PY
+)"
+    NODE_ARCHIVE="node-$NODE_VERSION-linux-$NODE_ARCH.tar.xz"
+    curl --fail --silent --show-error "https://nodejs.org/dist/$NODE_VERSION/$NODE_ARCHIVE" -o "$TASK_TMP/$NODE_ARCHIVE"
+    curl --fail --silent --show-error "https://nodejs.org/dist/$NODE_VERSION/SHASUMS256.txt" -o "$TASK_TMP/SHASUMS256.txt"
+    (cd "$TASK_TMP" && awk -v archive="$NODE_ARCHIVE" '$2 == archive' SHASUMS256.txt | sha256sum --check --status)
+    tar -xJf "$TASK_TMP/$NODE_ARCHIVE" -C /opt
+    for NODE_TOOL in node npm npx; do
+        ln -sfn "/opt/node-$NODE_VERSION-linux-$NODE_ARCH/bin/$NODE_TOOL" "/usr/local/bin/$NODE_TOOL"
+    done
+fi
 
-[Service]
-Type=simple
-WorkingDirectory=$USER_HOME/aEyes/controller
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=$USER_HOME/.Xauthority
-ExecStart=$USER_HOME/aEyes/controller/main.sh --service
-Restart=on-failure
-RestartSec=5s
-TimeoutStopSec=10s
+NODE_BIN="$(dirname -- "$(command -v node)")"
+if ! command -v yarn >/dev/null || [ "$(yarn --version)" != 1.22.22 ]; then
+    PATH="$NODE_BIN:$PATH" npm install --global yarn@1.22.22
+fi
+YARN_BIN="$(command -v yarn)"
+(cd "$ROOT_DIR/ui" && sudo -u "$USER_NAME" env PATH="$NODE_BIN:$PATH" "$YARN_BIN" install --frozen-lockfile)
+(cd "$ROOT_DIR/ui" && sudo -u "$USER_NAME" env PATH="$NODE_BIN:$PATH" "$YARN_BIN" build)
+install -d -m 0755 /var/www/aeyes
+rsync -r --delete --chmod=D755,F644 "$ROOT_DIR/ui/dist/" /var/www/aeyes/
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Direct Python launch as the deployment user uses the existing OAK USB rule.
+printf '%s\n' 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' > /etc/udev/rules.d/80-movidius.rules
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=usb
 
+# Render templates without assuming the checkout lives at ~/aEyes.
+python3 - "$ROOT_DIR" "$USER_NAME" "$TASK_TMP" <<'PY'
+from pathlib import Path
+import sys
+root, user, output = sys.argv[1:]
+escaped_root = root.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
+for filename in ('main.service', 'aeyes-monitor.service', 'aeyes-monitor.sudoers'):
+    text = (Path(root) / 'deploy' / filename).read_text()
+    (Path(output) / filename).write_text(text.replace('@ROOT@', escaped_root).replace('@USER@', user))
+PY
+visudo -cf "$TASK_TMP/aeyes-monitor.sudoers"
+install -m 0440 "$TASK_TMP/aeyes-monitor.sudoers" /etc/sudoers.d/aeyes-monitor
+install -m 0644 "$TASK_TMP/main.service" /etc/systemd/system/main.service
+install -m 0644 "$TASK_TMP/aeyes-monitor.service" /etc/systemd/system/aeyes-monitor.service
+
+# The standard nginx default site is replaced by the aEyes port-80 site.
+install -m 0644 "$ROOT_DIR/deploy/aeyes-nginx.conf" /etc/nginx/sites-available/aeyes
+if [ -L /etc/nginx/sites-enabled/default ] && [ "$(readlink -f /etc/nginx/sites-enabled/default)" = /etc/nginx/sites-available/default ]; then
+    rm /etc/nginx/sites-enabled/default
+fi
+ln -sfn /etc/nginx/sites-available/aeyes /etc/nginx/sites-enabled/aeyes
+nginx -t
 systemctl daemon-reload
-systemctl enable main.service
-systemctl restart main.service
+systemctl reload nginx
 
-echo "Run this command to see the service status: sudo systemctl status main.service"
-echo "Run this command to see live logs: sudo journalctl -u main.service -f"
-
-
-# -----------------------------------------------------------------------------
-# Complete
 echo ""
-echo "Install complete."
+echo "Install complete. Controller startup is explicit:"
+echo "  sudo systemctl enable --now main.service aeyes-monitor.service nginx"
+echo "Dashboard: http://192.168.5.100/ (port 80)"
+echo "Logs: sudo journalctl -u main.service -u aeyes-monitor.service -f"

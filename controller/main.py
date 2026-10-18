@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import signal
 import time
 from contextlib import nullcontext
 from dataclasses import asdict
@@ -15,14 +17,18 @@ from parameters import params as _params
 
 
 class Controller:
-    def __init__(self):
+    def __init__(self, monitor=False):
         # Keep pure pipeline imports usable without installing the camera SDK.
         from camera.detector import Detector
         self.running = True
-        self.detector = Detector(enable_visualizer=False)
+        self.detector = Detector(enable_visualizer=False, enable_preview=monitor)
         self.tracker = FaceTracker()
         self.eye_mgr = EyeManager(eye_configs=EYE_CONFIGS, camera_config=CAMERA_CONFIG)
         self.publisher = Publisher()
+        self.monitor = None
+        if monitor:
+            from monitoring.bridge import MonitorBridge
+            self.monitor = MonitorBridge(self.detector.preview_queue, active_config=_params)
 
     @staticmethod
     def _camera_xyz_to_detection(xyz_m: tuple[float, float, float] | None, *,
@@ -41,6 +47,7 @@ class Controller:
         log_context = open(record_path, "w") if record_path else nullcontext(None)
         with log_context as recording:
             while self.running:
+                observed = None
                 frame = self.detector.poll_frame()
                 if frame is not None and (last_capture_time is None or frame.timestamp > last_capture_time):
                     detections = [self._camera_xyz_to_detection(face.xyz_m, bbox=face.bbox,
@@ -48,12 +55,18 @@ class Controller:
                                   for face in frame.faces]
                     self.tracker.update(detections, timestamp=frame.timestamp)
                     last_capture_time = frame.timestamp
+                    observed = frame
                     if recording is not None:
                         recording.write(json.dumps({"timestamp": frame.timestamp, "sequence": frame.sequence,
                                                     "detections": [asdict(d) for d in detections]}) + "\n")
                 # Project for publication without moving the measurement-time filter.
                 states = self.eye_mgr.update(self.tracker.get_output(time.monotonic()))
                 self.publisher.send({eye_id: ControlMessage.from_state(state) for eye_id, state in states.items()})
+                if getattr(self, "monitor", None) is not None:
+                    try:
+                        self.monitor.offer(self.tracker, states, observed)
+                    except Exception:
+                        logging.exception("Monitoring snapshot failed; publication continues")
                 deadline += period
                 now = time.monotonic()
                 if deadline < now:
@@ -62,15 +75,23 @@ class Controller:
 
     def shutdown(self):
         self.running = False
-        self.detector.shutdown()
-        self.publisher.close()
+        try:
+            if self.monitor:
+                self.monitor.close()
+        finally:
+            try:
+                self.detector.shutdown()
+            finally:
+                self.publisher.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", help="Write capture timestamps and project-frame detections as JSONL for replay")
+    parser.add_argument("--monitor", action="store_true", help="Enable the local dashboard telemetry/preview feed")
     args = parser.parse_args()
-    controller = Controller()
+    controller = Controller(monitor=args.monitor)
+    signal.signal(signal.SIGTERM, lambda *_: setattr(controller, "running", False))
     try:
         controller.run(record_path=args.record)
     except KeyboardInterrupt:

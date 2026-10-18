@@ -246,6 +246,22 @@ class FaceTracker:
     def get_all_tracks(self) -> dict[FaceId, Track]:
         return self.tracks
 
+    def get_diagnostics(self, timestamp: float) -> list[dict]:
+        """Return copied diagnostics without advancing filters or lifecycle counters."""
+        public = self.get_output(timestamp)
+        tracks = list(self.tracks.values()) + [track for _, track in self.lost_tracks]
+        return [{"id": track.id, "status": track.status,
+                 "position": {axis: float(getattr(public[track.id].position if track.id in public
+                                                    else track.predicted_position, axis))
+                              for axis in ("x", "y", "z")},
+                 "velocity": [float(v) for v in track.filter.velocity],
+                 "visible": track.id in public, "is_static": bool(track.is_static),
+                 "bbox": list(track.bbox) if track.bbox else None,
+                 "confidence": float(track.confidence), "last_seen": track.last_seen,
+                 "last_depth_seen": track.last_depth_seen, "hits": track.hits,
+                 "missing_frames": track.missing_frames}
+                for track in tracks]
+
     def _retire(self, tid: int, lost_at: float):
         track = self.tracks.pop(tid)
         if track.status == TrackStatus.TENTATIVE:

@@ -1,0 +1,17 @@
+[Unit]
+Description=aEyes dashboard monitoring API
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory="@ROOT@"
+ExecStart="@ROOT@/.venv/bin/python" -m monitoring --host 127.0.0.1 --port 8080
+Environment=AEYES_SERVICE_CONTROL=1
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=multi-user.target

@@ -124,7 +124,7 @@ Current fields:
 
 ## Configuration and Important Defaults
 
-Behavioral settings live in **`controller/params.yaml`**, loaded and validated once at import by `parameters.py`. Restart after edits. Physical geometry lives in `config.py`; detector-specific settings still live in `camera/detector.py` and the NN archive.
+Behavioral settings live in **`controller/params.yaml`**, loaded once at import by `parameters.py` using the pure types/validation in `parameter_schema.py`. The dashboard resets to versioned `params.defaults.yaml` and saves atomically with revision checks. Restart after edits. Physical geometry lives in `config.py`; detector-specific settings still live in `camera/detector.py` and the NN archive.
 
 Key values as currently configured:
 
@@ -175,7 +175,7 @@ Eye-side network/timing constants are independent of YAML: controller address `1
 - `pull-eye-code.sh` rsyncs **eye1 → the local eye directory** for collecting edits made on that Pi. It does not run git pull on all Pis.
 - Both scripts currently use a development-PC path under `/home/$USER/Desktop/projects/aEyes/eye/`; alternative Pi paths are commented out.
 - `eye/install.sh` configures host/eye identity, firmware/display/CAN, dependencies, networking, and `main.service`. It requires sudo and restarts the service.
-- `controller/install.sh` requires sudo, configures dependencies/networking and `shutdown.service`, then **exits at an explicit development stop before installing `main.service`**.
+- `controller/install.sh` requires sudo and installs dependencies/networking, OAK USB access, the dashboard build, nginx on port 80, and `main.service`/`aeyes-monitor.service` units. Controller and monitor activation is explicit; the existing `shutdown.service` is enabled/restarted during installation.
 - The shutdown button uses GPIO 21 and invokes `scripts/shutdown-eyes.sh` before shutting down the controller.
 
 On eye units:
@@ -200,9 +200,15 @@ The installed eye service sets `DISPLAY=:0` and `XAUTHORITY`. Controller auto-st
 | `controller/publisher.py`, both `data_types.py` files | JSON/ZMQ wire contract |
 | `controller/demo.py`, `visual.py`, `plot.py` | Synthetic pipeline demos and visualizers |
 | `controller/replay.py` | Capture-log replay and optional ground-truth metrics |
+| `controller/monitoring/`, `controller/ui/` | Isolated FastAPI monitoring/MJPEG API and Yarn/Vite/React/Three.js dashboard |
+| `controller/deploy/` | Controller/monitor systemd units, port-80 nginx proxy, restricted restart rule |
 | `controller/test_*.py` | Hardware-independent unittest suite |
 | `eye/main.py` | Subscriber, startup/homing, command ramping, renderer dispatch |
 | `eye/eye_renderer.py`, `eye/shaders/eye.frag` | Pyglet/GLES 3.1 rendering and procedural eye shader |
 | `eye/motors/`, `eye/zero.py` | CAN control/configuration and manual zeroing |
 
 Both components have their own `requirements.txt` and `.venv`. Controller dependencies include DepthAI 3.6.1, depthai-nodes 0.5.0, NumPy/SciPy, PyYAML, pyzmq, OpenCV, and the plotting/Qt libraries. Eye dependencies include Pyglet, PyOpenGL, pyzmq, NumPy, python-can, RPi.GPIO, rich, and prompt_toolkit. The controller requirements still include both OpenCV wheel variants and an older redundant DepthAI lower bound; inspect the file before changing dependency pins.
+
+## Web Dashboard Development
+
+From `controller/`, run `.venv/bin/python -m monitoring --demo --reload` for hardware-free telemetry/images. From `controller/ui/`, run `yarn dev` and open http://localhost:5173/. Live mode uses the monitor without `--demo` plus `main.py --monitor`, which publishes to physical eyes. Production nginx serves port 80 and proxies `/api` to localhost:8080; the monitoring feed uses loopback ZMQ port 9101. Eye status is network reachability only. See controller/README.md for full commands. Run `yarn test` and `yarn build` in `controller/ui/` and the controller unittest suite after changes. The standard unittest API/transport tests require local event-loop/socket access.

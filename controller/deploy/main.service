@@ -1,0 +1,16 @@
+[Unit]
+Description=aEyes camera, tracking and eye command controller
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory="@ROOT@"
+ExecStart="@ROOT@/.venv/bin/python" "@ROOT@/main.py" --monitor
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
