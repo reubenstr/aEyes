@@ -72,7 +72,7 @@ The launcher activates `.venv` and sources `.env` for `EYE_ID` (1–6). A displa
 - Association gates each pair **before** Hungarian assignment, using a per-track depth-dependent Euclidean limit and a squared Mahalanobis innovation limit. Dummy unmatched options maximize valid match count before minimizing normalized uncertainty/appearance cost. Spatial and appearance costs have independent spatial gates; embeddings cannot bypass them.
 - Re-ID also uses joint assignment and predicts lost tracks forward. The live pipeline currently uses spatial/image-box evidence; it has no face-recognition model.
 - Output EMA uses elapsed time. Static classification compares velocity directly in m/s over a time window derived from `static_window`; observed misses, image-only observations, and lost reacquisition clear its history.
-- Controller publication uses a deadline schedule that subtracts processing time from the sleep interval. Eye command ramping runs between received messages using measured monotonic time, with a 0.1 s maximum integration step after stalls.
+- Controller publication uses a deadline schedule that subtracts processing time from the sleep interval. Eye trajectories run between received messages using measured monotonic time; worker stalls longer than 0.1 s trigger reseeding from fresh feedback instead of integrating the gap.
 
 ### Recording and Replay
 
@@ -149,7 +149,7 @@ New-track confirmation still requires 30 actual XYZ observations (about two seco
 
 Kalman defaults are `acceleration_noise=1.5` (continuous velocity diffusion in m²/s³), `measurement_std_lateral=0.05` m, and `measurement_std_depth=0.20` m. The measurement standard deviations are squared into covariance `R`, with depth noise on project X. Confidence/depth trust scales measurement covariance. The old `process_noise` and `measurement_noise_xy/z` YAML keys have been replaced; deploy `parameters.py`, `params.yaml`, and the filter together.
 
-Eye-side network/timing constants are independent of YAML: controller address `192.168.5.100`, port 9000, timeout 3 s. The subscriber keeps the latest message using ZMQ conflation and clamps finite targets to configured motor limits. Motor ramping uses measured elapsed time between worker ticks, retaining thresholds/rates of 5°/30° and 900°/s/22.5°/s.
+Eye-side network/timing constants are independent of YAML: controller address `192.168.5.100`, port 9000, timeout 3 s. The subscriber keeps the latest message using ZMQ conflation and clamps finite targets to configured motor limits. `eye/motors/motion.py` plans quintic trajectories with continuous position/velocity/acceleration when retargeting and bounds speed, acceleration, jerk and joint positions over each curve. `MotionLimits` in `eye/motors/motor_config.py` sets yaw/pitch speed to 45°/s / 30°/s, acceleration to 90°/s² / 60°/s², and jerk to 360°/s³ / 240°/s³. Both axes use a 5° following-error limit and 0.25 s feedback age limit. Feedback faults and excessive lag hold the last accepted target; lag recovery requires catching up to half the error limit. Startup/reconnection/recovery reseed at rest from fresh adjusted positions. Fault holds/reseeding override normal trajectory continuity; no motion progress accumulates while paused. Driver current/PI settings, CAN speed caps and homing commands are independent of these software limits.
 
 ## Hardware and Motor Control
 
@@ -205,6 +205,7 @@ The installed eye service sets `DISPLAY=:0` and `XAUTHORITY`. Controller auto-st
 | `eye/main.py` | Subscriber, startup/homing, command ramping, renderer dispatch |
 | `eye/eye_renderer.py`, `eye/shaders/eye.frag` | Pyglet/GLES 3.1 rendering and procedural eye shader |
 | `eye/motors/`, `eye/zero.py` | CAN control/configuration and manual zeroing |
+| `eye/motors/motion.py` | Retargetable quintic eye trajectories and full-curve motion-limit checks |
 
 Both components have their own `requirements.txt` and `.venv`. Controller dependencies include DepthAI 3.6.1, depthai-nodes 0.5.0, NumPy/SciPy, PyYAML, pyzmq, OpenCV, and the monitoring API libraries. Eye dependencies include Pyglet, PyOpenGL, pyzmq, NumPy, python-can, RPi.GPIO, rich, and prompt_toolkit. The controller requirements still include both OpenCV wheel variants and an older redundant DepthAI lower bound; inspect the file before changing dependency pins.
 

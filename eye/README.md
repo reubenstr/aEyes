@@ -109,6 +109,40 @@ sudo eject /dev/sda
 Boot up each RPi and run the install.sh script to setup unique EYE_ID per RPi. Use a keyboard/monitor or boot the RPis one at a time and ssh into eye@eye1.local.
 
 
+## Tracking motion
+
+`main.py` advances separate yaw and pitch trajectories between controller messages.
+`motors/motion.py` uses quintic curves that preserve position, velocity and
+acceleration when goals change, and checks speed, acceleration, jerk and joint
+limits over the entire planned curve. A goal inside the current stopping distance
+may require continued motion in the old direction while braking. If a new curve
+cannot meet the limits, the previous feasible curve finishes before replanning.
+
+Tune each motor's `motion=MotionLimits(...)` in `motors/motor_config.py`, then restart:
+
+| Setting | BASE / yaw | EYE / pitch |
+|---|---:|---:|
+| Maximum speed (degrees/s) | 45 | 30 |
+| Maximum acceleration (degrees/s²) | 90 | 60 |
+| Maximum jerk (degrees/s³) | 360 | 240 |
+| Maximum commanded/measured position difference (degrees) | 5 | 5 |
+| Maximum feedback age (s) | 0.25 | 0.25 |
+
+These are starting values for hardware tuning using the existing current limits.
+They use the eye application's angle coordinates; they do not change driver PI
+gains, current limits, acceleration settings, homing speed or raw CAN speed caps.
+
+Tracking initializes from fresh adjusted position feedback after homing. Missing,
+stale or out-of-range feedback pauses an axis at its last accepted target. Excessive
+following error also pauses it, and recovery requires feedback to get within half
+the configured error limit of that held target. Pausing does not disable the motor;
+its existing position target and hardware current limit remain active. Recovery
+reseeds the trajectory at rest from fresh feedback, so no future motion accumulates
+while paused. Fault holds/reseeding take precedence over normal smooth-motion limits.
+
+A controller timeout holds the last accepted targets. Reconnection, or an eye worker
+tick delayed more than 0.1 seconds, reseeds from fresh feedback before moving again.
+
 ## Mechanical
 
 The main.py script will not initialize the motors if the .motors-zeroed file flag has not been found.

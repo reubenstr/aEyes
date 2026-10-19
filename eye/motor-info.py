@@ -5,12 +5,17 @@ Run from eye/ on a Pi with its CAN interface already configured:
     sudo systemctl stop main.service
     sudo ip link set can0 up type can bitrate 1000000
     .venv/bin/python motor-info.py
+    .venv/bin/python motor-info.py --parameter-reads
     .venv/bin/python motor-info.py --json > /tmp/motor-info.json
 
 Leave other CAN control programs stopped while collecting the report. This script
 does not stop them, disable an already enabled motor, or reconfigure the CAN bus.
 Decoding follows the bundled LingKong CAN Protocol V2.35, with the voltage layout
 used by the deployed eye driver. Raw replies preserve evidence of firmware differences.
+
+--parameter-reads additionally probes the read-only 0x40 parameter interface in
+the SMC Powers MS/MF/RMD CAN V2.35 manual (compatibility with these motors is
+unconfirmed): https://www.scribd.com/document/789874778/MS-MF-RMD-motor-CAN-protocol-V2-35-3-1
 """
 
 import argparse
@@ -31,11 +36,22 @@ READ_COMMANDS = {
     0x9C: "Current, speed and encoder",
 }
 
+PARAMETER_READS = {
+    0x96: "Angle loop PID",
+    0x97: "Speed loop PID",
+    0x98: "Current loop PID",
+    0x99: "Maximum torque-current limit",
+    0x9A: "Maximum speed limit",
+    0x9E: "Speed ramp",
+}
+
 NOTES = [
     "Only read requests are sent. No motor enable/disable, motion, calibration, or setting writes.",
     "Stop main.service and other CAN control programs before reading for consistent replies/settings.",
-    "Firmware/model, reduction ratio, stored max speed, and max torque-current limit have no read "
-    "commands in the bundled CAN V2.35 manual; retrieve them with LK Motor Tool.",
+    "Firmware/model and reduction ratio are not queried; retrieve them with LK Motor Tool.",
+    "Legacy 0x30/0x33 timeouts do not establish the installed protocol. --parameter-reads "
+    "probes a related protocol's 0x40 interface for PID, speed/current limits and speed ramp. "
+    "Its compatibility is unconfirmed, and parameter units are left raw.",
     "Speed and acceleration use protocol units; gearbox-output scaling is unconfirmed.",
     "Position shows both the manual's /100 scale and the eye driver's /1000 scale, "
     "without homing offsets or inversion. Neither establishes the physical reduction ratio.",
@@ -55,6 +71,17 @@ def decode_reply(command, data):
         return dict(zip(names, data[2:8]))
     if command == 0x33:
         return {"acceleration_protocol_deg_s2": int.from_bytes(data[4:8], "little", signed=True)}
+    if command == 0x40:
+        parameter_id = data[1]
+        if parameter_id in (0x96, 0x97, 0x98):
+            return {name: int.from_bytes(data[offset:offset + 2], "little")
+                    for name, offset in (("kp_raw", 2), ("ki_raw", 4), ("kd_raw", 6))}
+        if parameter_id == 0x99:
+            return {"max_torque_current_raw": int.from_bytes(data[2:4], "little", signed=True)}
+        if parameter_id in (0x9A, 0x9E):
+            key = "max_speed_raw" if parameter_id == 0x9A else "speed_ramp_raw"
+            return {key: int.from_bytes(data[2:6], "little", signed=True)}
+        raise ValueError(f"Unsupported parameter ID 0x{parameter_id:02X}")
     if command == 0x92:
         counts = int.from_bytes(data[1:8], "little", signed=True)
         return {
@@ -89,9 +116,12 @@ def decode_reply(command, data):
     raise ValueError(f"Unsupported read command 0x{command:02X}")
 
 
-def read_reply(bus, motor_id, command, timeout, attempts):
+def read_reply(bus, motor_id, command, timeout, attempts, parameter_id=None):
     """Send only allowlisted read commands and accept matching received data frames."""
-    if command not in READ_COMMANDS:
+    if command == 0x40:
+        if parameter_id not in PARAMETER_READS:
+            raise ValueError("Parameter reads require an allowed parameter ID")
+    elif command not in READ_COMMANDS or parameter_id is not None:
         raise ValueError(f"Command 0x{command:02X} is not an allowed read")
     import can
 
@@ -103,7 +133,7 @@ def read_reply(bus, motor_id, command, timeout, attempts):
             break
     for _ in range(attempts):
         bus.send(can.Message(arbitration_id=arbitration_id, is_extended_id=False,
-                             data=[command, 0, 0, 0, 0, 0, 0, 0]), timeout=timeout)
+                             data=[command, parameter_id or 0, 0, 0, 0, 0, 0, 0]), timeout=timeout)
         deadline = monotonic() + timeout
         while (remaining := deadline - monotonic()) > 0:
             reply = bus.recv(remaining)
@@ -113,21 +143,28 @@ def read_reply(bus, motor_id, command, timeout, attempts):
                     and reply.is_rx and not reply.is_extended_id
                     and not reply.is_error_frame and not reply.is_remote_frame
                     and reply.dlc == 8 and len(reply.data) == 8
-                    and reply.data[0] == command):
+                    and reply.data[0] == command
+                    and (parameter_id is None or reply.data[1] == parameter_id)):
                 return bytes(reply.data)
     raise TimeoutError(f"No matching reply after {attempts} attempts ({timeout:g} s each)")
 
 
-def collect_motor_info(bus, config, channel, timeout, attempts):
+def collect_motor_info(bus, config, channel, timeout, attempts, parameter_reads=False):
     import can
 
     result = {"name": str(config.name), "motor_id": config.id, "channel": channel,
               "can_id_hex": f"0x{0x140 + config.id:03X}", "reads": {}}
-    for command, name in READ_COMMANDS.items():
+    requests = [(command, name, None) for command, name in READ_COMMANDS.items()]
+    if parameter_reads:
+        requests.extend((0x40, name, parameter_id) for parameter_id, name in PARAMETER_READS.items())
+    for command, name, parameter_id in requests:
         record = {"name": name}
-        result["reads"][f"0x{command:02X}"] = record
+        key = f"0x{command:02X}"
+        if parameter_id is not None:
+            key += f"/0x{parameter_id:02X}"
+        result["reads"][key] = record
         try:
-            data = read_reply(bus, config.id, command, timeout, attempts)
+            data = read_reply(bus, config.id, command, timeout, attempts, parameter_id)
             record.update(raw_reply_hex=data.hex(" "), values=decode_reply(command, data))
         except (can.CanError, OSError, TimeoutError) as error:
             record["error"] = str(error)
@@ -159,6 +196,8 @@ def main(argv=None):
     parser.add_argument("--motor", choices=("BASE", "EYE"), help="Read one axis (default: both configured axes)")
     parser.add_argument("--timeout", type=float, default=0.25, help="Reply timeout in seconds (default: 0.25)")
     parser.add_argument("--attempts", type=int, default=2, help="Read attempts per command (default: 2)")
+    parser.add_argument("--parameter-reads", action="store_true",
+                        help="Also probe the related protocol's read-only 0x40 parameter interface")
     parser.add_argument("--json", action="store_true", help="Print a JSON report for saving/comparison")
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0 or args.attempts < 1:
@@ -195,7 +234,7 @@ def main(argv=None):
                                          "error": errors[channel]})
             else:
                 report["motors"].append(collect_motor_info(
-                    buses[channel], config, channel, args.timeout, args.attempts))
+                    buses[channel], config, channel, args.timeout, args.attempts, args.parameter_reads))
     if args.json:
         print(json.dumps(report, indent=2))
     else:

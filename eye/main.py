@@ -12,10 +12,13 @@ from data_types import ControlMessage
 from motors.data_types import MotorName, MotorSpeeds
 from motors.motors import Motors
 from motors.motor_config import get_motor_info, BASE_HOME_INVERSION, EYE_INVERSIONS
+from motors.motion import MotionProfile
 
 SOCKET_ADDRESS = "192.168.5.100"
 SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
+MAX_MOTION_STEP_SECONDS = 0.1
+MOTOR_NAMES = (MotorName.BASE, MotorName.EYE)
 
 class Eye:
     def __init__(self):
@@ -26,6 +29,11 @@ class Eye:
         self.exit_event = Event()
         self.commanded_yaw = 0.0
         self.commanded_pitch = 0.0
+        self._motor_configs = {name: get_motor_info(name) for name in MOTOR_NAMES}
+        self._motion = {name: MotionProfile(config.min_position, config.max_position, config.motion)
+                        for name, config in self._motor_configs.items()}
+        self._motion_ready = {name: False for name in MOTOR_NAMES}
+        self._lag_holds = {}
 
     ###############################################################################
     # Initializers
@@ -55,7 +63,10 @@ class Eye:
                 raise RuntimeError("Motor startup cancelled")
             if not self.motors.enable_all_motors():
                 raise RuntimeError("Motor enable failed")
-            return self.home_motors(self.motors)
+            if not self.home_motors(self.motors):
+                return False
+            self._initialize_motion_from_feedback()
+            return True
         except Exception as error:
             if self.motors is not None:
                 try:
@@ -86,18 +97,78 @@ class Eye:
         except zmq.Again:
             pass
 
-    def ramp_target(self, commanded: float, target: float, dt: float) -> float:
-        CLOSE_DEG = 5.0  # below this → pass-through (fast tracking)
-        FAR_DEG = 30.0  # above this → max slowdown
-        FAST_DEG_S = 900.0  # deg/sec when close (~pass-through)
-        SLOW_DEG_S = 22.5  # deg/sec when far   (smooth slew)
-        if not all(math.isfinite(v) for v in (commanded, target, dt)) or dt < 0:
-            raise ValueError("Motor ramp values must be finite and dt nonnegative")
-        delta = abs(target - commanded)
-        t = max(0.0, min(1.0, (delta - CLOSE_DEG) / (FAR_DEG - CLOSE_DEG)))
-        t = 3 * t**2 - 2 * t**3  # smoothstep
-        max_step = (FAST_DEG_S + t * (SLOW_DEG_S - FAST_DEG_S)) * dt
-        return commanded + max(-max_step, min(max_step, target - commanded))
+    def ramp_target(self, motor_name: MotorName, target: float, dt: float) -> float:
+        """Advance an axis without resetting its velocity when its goal changes."""
+        return self._motion[motor_name].advance(target, dt).position
+
+    def _feedback_position(self, name, sample, now):
+        config = self._motor_configs[name]
+        if (sample is None or not all(math.isfinite(value) for value in sample)
+                or not 0.0 <= now - sample[2] <= config.motion.feedback_timeout_s
+                or not config.min_position <= sample[1] <= config.max_position):
+            return None
+        return sample[1]
+
+    def _set_commanded_position(self, name, position):
+        if name == MotorName.BASE:
+            self.commanded_yaw = position
+        else:
+            self.commanded_pitch = position
+
+    def _reset_motion(self):
+        # Reconnection and timing stalls must not carry an old velocity forward.
+        self._motion_ready = {name: False for name in MOTOR_NAMES}
+        self._lag_holds.clear()
+
+    def _initialize_motion_from_feedback(self):
+        samples = {name: self.motors.get_position_sample(name) for name in MOTOR_NAMES}
+        now = monotonic()
+        for name in MOTOR_NAMES:
+            position = self._feedback_position(name, samples[name], now)
+            if position is None:
+                raise RuntimeError(f"Missing/stale/out-of-range feedback after homing for {name}")
+            self._motion[name].reset(position)
+            self._motion_ready[name] = True
+            self._set_commanded_position(name, position)
+
+    def _update_motor_motion(self, targets, samples, now, dt):
+        """Pause on feedback faults; resume at rest from fresh measured positions.
+
+        A fault hold takes precedence over normal trajectory derivative limits.
+        The last accepted CAN target remains in place while feedback is stale or
+        a lagging motor catches up; no future trajectory progress is accumulated.
+        """
+        issues = []
+        for name, target in zip(MOTOR_NAMES, targets):
+            profile = self._motion[name]
+            limits = self._motor_configs[name].motion
+            position = self._feedback_position(name, samples.get(name), now)
+            if position is None:
+                self._motion_ready[name] = False
+                issues.append(f"{name}: motion paused (missing/stale/out-of-range feedback)")
+                continue
+            if name in self._lag_holds:
+                # Hysteresis avoids repeatedly starting/stopping at the lag limit.
+                if abs(self._lag_holds[name] - position) > limits.max_following_error_deg / 2.0:
+                    issues.append(f"{name}: motion paused (motor following error)")
+                    continue
+                del self._lag_holds[name]
+            if not self._motion_ready[name]:
+                profile.reset(position)
+                self._motion_ready[name] = True
+                commanded = position  # Seed only; start the new trajectory next tick.
+            else:
+                previous = profile.state.position
+                commanded = self.ramp_target(name, target, dt)
+                if abs(commanded - position) > limits.max_following_error_deg:
+                    profile.reset(previous)
+                    self._motion_ready[name] = False
+                    self._lag_holds[name] = previous
+                    issues.append(f"{name}: motion paused (motor following error)")
+                    continue
+            self._set_commanded_position(name, commanded)
+            self.motors.set_motor_targets(name, MotorSpeeds.FAST, commanded)
+        return "; ".join(issues)
 
     ###############################################################################
     # Motor Utilities
@@ -204,6 +275,7 @@ class Eye:
     def _worker(self):
         last_msg_time = last_tick = monotonic()
         connected = False
+        last_motion_status = None
         targets = (self.commanded_yaw, self.commanded_pitch)
         self.eye_renderer.set_text(TextType.INFO, "Waiting for data")
         self._flush_socket()
@@ -214,28 +286,36 @@ class Eye:
                     msg = ControlMessage(**payload[str(self.eye_id)])
                     if not all(math.isfinite(v) for v in (msg.yaw, msg.pitch)):
                         raise ValueError("Non-finite motor target")
-                    targets = tuple(max(get_motor_info(name).min_position,
-                                        min(get_motor_info(name).max_position, value))
-                                    for name, value in zip((MotorName.BASE, MotorName.EYE), (msg.yaw, msg.pitch)))
+                    targets = tuple(max(self._motor_configs[name].min_position,
+                                        min(self._motor_configs[name].max_position, value))
+                                    for name, value in zip(MOTOR_NAMES, (msg.yaw, msg.pitch)))
                     last_msg_time = monotonic()
+                    if not connected:
+                        self._reset_motion()
+                        last_motion_status = None
                     connected = True
-                    self.eye_renderer.set_text(TextType.INFO, "")
                     self.eye_renderer.apply_control_message(msg)
                 except zmq.Again:
                     pass
                 except (ValueError, TypeError, KeyError) as error:
                     print(f"[Main] Bad message: {error}")
-            now = monotonic()
-            dt = min(0.1, max(0., now - last_tick))
+            samples = {}
+            if connected and self.motors:
+                samples = {name: self.motors.get_position_sample(name) for name in MOTOR_NAMES}
+            now = monotonic()  # CAN feedback reads may have waited on the bus lock.
+            elapsed = max(0., now - last_tick)
             last_tick = now
             if connected and now - last_msg_time > MESSAGE_TIMEOUT_SECONDS:
                 connected = False
+                self._reset_motion()
                 self.eye_renderer.set_text(TextType.ERROR, "Data timeout!")
             if connected and self.motors:
-                self.commanded_yaw = self.ramp_target(self.commanded_yaw, targets[0], dt)
-                self.commanded_pitch = self.ramp_target(self.commanded_pitch, targets[1], dt)
-                self.motors.set_motor_targets(MotorName.BASE, MotorSpeeds.FAST, self.commanded_yaw)
-                self.motors.set_motor_targets(MotorName.EYE, MotorSpeeds.FAST, self.commanded_pitch)
+                if elapsed > MAX_MOTION_STEP_SECONDS:
+                    self._reset_motion()
+                status = self._update_motor_motion(targets, samples, now, min(elapsed, MAX_MOTION_STEP_SECONDS))
+                if status != last_motion_status:
+                    self.eye_renderer.set_text(TextType.ERROR if status else TextType.INFO, status)
+                    last_motion_status = status
             sleep(0.005)
 
     ###############################################################################
