@@ -137,6 +137,8 @@ class Eye:
         A fault hold takes precedence over normal trajectory derivative limits.
         The last accepted CAN target remains in place while feedback is stale or
         a lagging motor catches up; no future trajectory progress is accumulated.
+        A goal reached before the held position, including a reversal, cancels
+        that obsolete hold and resumes at rest from fresh feedback.
         """
         issues = []
         for name, target in zip(MOTOR_NAMES, targets):
@@ -149,7 +151,12 @@ class Eye:
                 continue
             if name in self._lag_holds:
                 # Hysteresis avoids repeatedly starting/stopping at the lag limit.
-                if abs(self._lag_holds[name] - position) > limits.max_following_error_deg / 2.0:
+                held = self._lag_holds[name]
+                error = held - position
+                # A closer goal or reversal (including return to idle) must not
+                # wait for the motor to reach an obsolete, farther target.
+                still_needs_hold = (target - held) * error >= 0.0
+                if abs(error) > limits.max_following_error_deg / 2.0 and still_needs_hold:
                     issues.append(f"{name}: motion paused (motor following error)")
                     continue
                 del self._lag_holds[name]

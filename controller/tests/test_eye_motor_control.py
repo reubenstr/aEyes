@@ -355,6 +355,75 @@ class MotorControlTests(unittest.TestCase):
         self.motion_tick(eye, 11.01, (held, eye.commanded_pitch))
         self.assertEqual(eye._motion[self.MotorName.BASE].state.velocity, 0.)
 
+    def test_new_target_before_lag_hold_reseeds_without_waiting_for_old_position(self):
+        for held, measured, targets in (
+                (40., 10., (0., -22.5)),  # Return to idle after target loss.
+                (-40., -10., (0., 22.5)),
+                (0., -30., (-10., -22.5)),  # Idle can be in the same direction.
+                (0., 30., (10., 22.5)),
+                (40., 10., (10., 10.))):  # The new goal is already reached.
+            with self.subTest(held=held, targets=targets):
+                eye = self.eye()
+                eye.motors = SimpleNamespace(set_motor_targets=Mock())
+                for config in eye._motor_configs.values():
+                    config.motion.max_following_error_deg = 25.
+                    config.motion.max_acceleration_deg_s2 = 1000.
+                self.motion_tick(eye, 10., (held, held), targets=(held, held))
+                status = self.motion_tick(eye, 10.005, (measured, measured), targets=(held, held))
+                self.assertIn('motor following error', status)
+                self.assertEqual(set(eye._lag_holds), set(self.eye_module.MOTOR_NAMES))
+
+                eye.motors.set_motor_targets.reset_mock()
+                status = self.motion_tick(eye, 10.01, (measured, measured), targets=targets)
+                self.assertEqual(status, '')
+                self.assertFalse(eye._lag_holds)
+                self.assertEqual(eye.motors.set_motor_targets.call_count, 2)
+                for name in self.eye_module.MOTOR_NAMES:
+                    self.assertEqual(eye._motion[name].state.position, measured)
+                    self.assertEqual(eye._motion[name].state.velocity, 0.)
+
+                self.motion_tick(eye, 10.015, (measured, measured), targets=targets)
+                for name, target in zip(self.eye_module.MOTOR_NAMES, targets):
+                    state = eye._motion[name].state
+                    self.assert_motion_bounds(type(state)(measured), state, .005, eye._motion[name])
+                    direction = (target > measured) - (target < measured)
+                    self.assertAlmostEqual(state.position, measured + direction * .5 * 1000. * .005**2)
+                    self.assertAlmostEqual(state.velocity, direction * 1000. * .005)
+
+    def test_target_at_or_beyond_lag_hold_still_waits_for_motor_to_catch_up(self):
+        for held, measured, target in ((30., 0., 30.), (30., 0., 40.),
+                                       (-30., 0., -30.), (-30., 0., -40.)):
+            with self.subTest(held=held, target=target):
+                eye = self.eye()
+                eye.motors = SimpleNamespace(set_motor_targets=Mock())
+                for config in eye._motor_configs.values():
+                    config.motion.max_following_error_deg = 25.
+                self.motion_tick(eye, 10., (held, held), targets=(held, held))
+                self.motion_tick(eye, 10.005, (measured, measured), targets=(held, held))
+                eye.motors.set_motor_targets.reset_mock()
+
+                status = self.motion_tick(eye, 10.01, (measured, measured), targets=(target, target))
+                self.assertIn('motor following error', status)
+                eye.motors.set_motor_targets.assert_not_called()
+                self.assertEqual((eye.commanded_yaw, eye.commanded_pitch), (held, held))
+                self.assertEqual(set(eye._lag_holds), set(self.eye_module.MOTOR_NAMES))
+
+    def test_reversing_target_cannot_release_lag_hold_with_stale_feedback(self):
+        eye = self.eye()
+        eye.motors = SimpleNamespace(set_motor_targets=Mock())
+        for config in eye._motor_configs.values():
+            config.motion.max_following_error_deg = 25.
+        self.motion_tick(eye, 10., (40., 40.), targets=(40., 40.))
+        self.motion_tick(eye, 10.005, (10., 10.), targets=(40., 40.))
+        eye.motors.set_motor_targets.reset_mock()
+
+        samples = {name: (10., 10., 10.005) for name in self.eye_module.MOTOR_NAMES}
+        status = eye._update_motor_motion((0., -22.5), samples, 11., .005)
+        self.assertIn('missing/stale/out-of-range feedback', status)
+        eye.motors.set_motor_targets.assert_not_called()
+        self.assertEqual((eye.commanded_yaw, eye.commanded_pitch), (40., 40.))
+        self.assertEqual(set(eye._lag_holds), set(self.eye_module.MOTOR_NAMES))
+
     def test_slow_motor_tracks_large_move_without_periodic_fault_resets(self):
         eye = self.eye()
         eye.motors = SimpleNamespace(set_motor_targets=Mock())
