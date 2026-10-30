@@ -1,8 +1,19 @@
+#!/usr/bin/env python3
+"""Main entry point for the standalone monitoring API."""
+
 import argparse
 import os
+from pathlib import Path
+import sys
 
 
 def main():
+    # Make controller modules importable when launched as a script, including in
+    # Uvicorn's reload subprocess, regardless of the working directory.
+    controller_dir = str(Path(__file__).resolve().parents[1])
+    if __package__ in (None, ""):
+        sys.path.insert(0, controller_dir)
+
     parser = argparse.ArgumentParser(
         description="aEyes monitoring API (independent of the controller)"
     )
@@ -21,9 +32,7 @@ def main():
         host=args.host,
         port=args.port,
         reload=args.reload,
-        reload_dirs=[str(__import__("pathlib").Path(__file__).resolve().parents[1])]
-        if args.reload
-        else None,
+        reload_dirs=[controller_dir] if args.reload else None,
         workers=1,
     )
 

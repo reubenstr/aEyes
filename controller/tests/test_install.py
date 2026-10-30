@@ -146,7 +146,8 @@ install() {
         self.assertIn(f'WorkingDirectory="{CONTROLLER}"', unit)
         self.assertNotIn('@ROOT@', unit)
         monitor = (self.installed / 'aeyes-monitor.service').read_text()
-        self.assertIn('-m monitoring --host 127.0.0.1 --port 8080', monitor)
+        self.assertIn(f'"{CONTROLLER}/monitoring/monitor.py" --host 127.0.0.1 --port 8080',
+                      monitor)
         sudoers = (self.installed / 'aeyes-monitor').read_text()
         self.assertIn('installer_test ALL=(root) NOPASSWD: /usr/bin/systemctl restart main.service',
                       sudoers)

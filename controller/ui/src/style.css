@@ -727,6 +727,10 @@ td.numeric {
     background: #252525
 }
 
+main > .notice:first-child {
+    margin-top: var(--card-gap)
+}
+
 .settings {
     margin-top: var(--card-gap);
     display: flex;
