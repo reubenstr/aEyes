@@ -59,7 +59,7 @@ class DetectedFrame:
 
 
 class Detector:
-    """Standalone OAK-D face detector with device-side depth-backed XYZ output."""
+    """OAK-D face detector with aligned depth and host-side XYZ calculation."""
 
     def __init__(
         self,
@@ -119,19 +119,33 @@ class Detector:
             rgb_out,
             nn_archive,
         )
-        # Leave enough SHAVEs for StereoDepth, ImageManip, and spatial calculation.
+        # Leave enough SHAVEs for StereoDepth, ImageManip, and depth alignment.
         nn_with_parser.setNNArchive(nn_archive, numShaves=NN_SHAVES)
+        # YuNet parsing runs on the host. Keep current results at both stages;
+        # limiting only the final output queue cannot clear an upstream backlog.
+        for input_queue in (nn_with_parser.input, nn_with_parser.getParser().input):
+            input_queue.setBlocking(False)
+            input_queue.setMaxSize(1)
 
         # SpatialLocationCalculator requires matching transform metadata between
         # detections and depth, so align depth to the exact NN input frame.
         depth_align = pipeline.create(dai.node.ImageAlign)
         depth_align.setRunOnHost(False)
         depth_align.setOutKeepAspectRatio(False)
+        for input_queue in (depth_align.input, depth_align.inputAlignTo):
+            input_queue.setBlocking(False)
+            input_queue.setMaxSize(1)
         stereo.depth.link(depth_align.input)
         nn_with_parser.passthrough.link(depth_align.inputAlignTo)
 
         spatial_calc = pipeline.create(dai.node.SpatialLocationCalculator)
-        spatial_calc.setRunOnHost(False)
+        # Consume host-parsed YuNet results directly instead of sending them back
+        # to the device through another blocking XLink bridge. Depth alignment
+        # remains on the OAK, with the same transform and spatial configuration.
+        spatial_calc.setRunOnHost(True)
+        for input_queue in (spatial_calc.inputDepth, spatial_calc.inputDetections):
+            input_queue.setBlocking(False)
+            input_queue.setMaxSize(1)
         spatial_calc.initialConfig.setDepthThresholds(
             DEPTH_LOWER_THRESHOLD_MM,
             DEPTH_UPPER_THRESHOLD_MM,

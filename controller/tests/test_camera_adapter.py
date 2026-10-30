@@ -79,6 +79,51 @@ class CameraAdapterTests(unittest.TestCase):
         self.assertNotEqual(self.detector([first]).poll_frame().capture_key,
                             self.detector([second]).poll_frame().capture_key)
 
+    def test_pipeline_consumes_yunet_on_host_with_latest_only_inputs(self):
+        for preview in (False, True):
+            with self.subTest(preview=preview):
+                detector = self.module.Detector.__new__(self.module.Detector)
+                detector.model_archive = Path(__file__)
+                detector.device = object()
+                detector.fps_limit = 15
+                detector.enable_preview = preview
+                detector.visualizer = None
+                detector._nn_input_size = Mock(return_value=(640, 360))
+                detector._nn_frame_type = Mock(return_value='BGR888p')
+                dai = Mock()
+                pipeline, camera, stereo, nn, align, spatial = [Mock() for _ in range(6)]
+                dai.Pipeline.return_value = pipeline
+                camera.build.return_value = camera
+                stereo.build.return_value = stereo
+                nn.build.return_value = nn
+                # setNNArchive rebuilds the parser; configure the final instance.
+                old_parser, parser = Mock(), Mock()
+                nn.getParser.return_value = old_parser
+                nn.setNNArchive.side_effect = lambda *a, **kw: setattr(nn.getParser, 'return_value', parser)
+                nodes = {dai.node.Camera: camera, dai.node.StereoDepth: stereo,
+                         self.module.ParsingNeuralNetwork: nn, dai.node.ImageAlign: align,
+                         dai.node.SpatialLocationCalculator: spatial}
+                pipeline.create.side_effect = nodes.__getitem__
+
+                with patch.object(self.module, 'dai', dai):
+                    detector._build_pipeline()
+
+                spatial.setRunOnHost.assert_called_once_with(True)
+                align.setRunOnHost.assert_called_once_with(False)
+                for input_queue in (nn.input, parser.input, align.input, align.inputAlignTo,
+                                    spatial.inputDepth, spatial.inputDetections):
+                    input_queue.setBlocking.assert_called_once_with(False)
+                    input_queue.setMaxSize.assert_called_once_with(1)
+                old_parser.input.setBlocking.assert_not_called()
+                nn.out.link.assert_called_once_with(spatial.inputDetections)
+                align.outputAligned.link.assert_called_once_with(spatial.inputDepth)
+                spatial.outputDetections.createOutputQueue.assert_called_once_with(maxSize=1, blocking=False)
+                if preview:
+                    nn.passthrough.createOutputQueue.assert_called_once_with(maxSize=4, blocking=False)
+                else:
+                    nn.passthrough.createOutputQueue.assert_not_called()
+                pipeline.start.assert_not_called()
+
     def test_shutdown_releases_camera_even_if_pipeline_stop_fails(self):
         detector = self.module.Detector.__new__(self.module.Detector)
         detector.pipeline = Mock()

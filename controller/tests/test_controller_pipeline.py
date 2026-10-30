@@ -104,6 +104,39 @@ class ControllerTimingTests(unittest.TestCase):
         self.assertEqual(result.depth_quality, 0.)
         self.assertIsNotNone(result.bbox)
 
+    def test_delayed_detections_release_eyes_and_fresh_capture_restores_assignment(self):
+        now = [1.]
+        face = SimpleNamespace(xyz_m=(0.2, 0., 2.), bbox=(0.2, 0.2, 0.4, 0.4), confidence=0.9)
+        captures = iter([(1., 0.95), (4., 1.05), (4.1, 4.05)])
+        published = []
+
+        def poll():
+            now[0], timestamp = next(captures)
+            return SimpleNamespace(timestamp=timestamp, sequence=1, faces=[face])
+
+        with patch('main.Publisher') as publisher, \
+             patch('main.time.monotonic', side_effect=lambda: now[0]):
+            controller = Controller(demo=True, monitor=False)
+            controller.tracker.min_hits_to_confirm = 1
+            controller.tracker.min_hits_to_confirm_reacquiring_tracks = 1
+            controller.detector = SimpleNamespace(poll_frame=poll, shutdown=Mock())
+
+            def sleep(_):
+                published.append(publisher.return_value.send.call_args.args[0])
+                if len(published) == 3:
+                    controller.running = False
+
+            try:
+                with patch('main.time.sleep', side_effect=sleep):
+                    controller.run()
+                self.assertTrue(any(msg.yaw != 0 for msg in published[0].values()))
+                self.assertTrue(all(msg.yaw == 0 for msg in published[1].values()))
+                self.assertTrue(any(msg.yaw != 0 for msg in published[2].values()))
+                self.assertTrue(any(state.face_id is not None for state in controller.eye_mgr._states.values()))
+                self.assertTrue(controller.tracker.get_output(now[0]))
+            finally:
+                controller.shutdown()
+
     def test_yaw_uses_all_gimbal_translation_components(self):
         eye = EyeConfig(1, Position3D(0.3, -0.2, 0.))
         conversions = Conversions([eye], CameraConfig(0.1, 0., 0.))
