@@ -34,8 +34,8 @@ def motor_config() -> List[MotorConfig]:
             allow_comms=True,
             home_position=67.5,  # Physical endstop position.
             motion=MotionLimits(
-                max_speed_deg_s=45.0,
-                max_acceleration_deg_s2=90.0,
+                max_speed_deg_s=120.0,
+                max_acceleration_deg_s2=240.0,
                 max_following_error_deg=5.0,
                 feedback_timeout_s=0.25,
             ),
@@ -51,8 +51,8 @@ def motor_config() -> List[MotorConfig]:
             allow_comms=True,
             home_position=45,  # Physical endstop position.
             motion=MotionLimits(
-                max_speed_deg_s=30.0,
-                max_acceleration_deg_s2=60.0,
+                max_speed_deg_s=120.0,
+                max_acceleration_deg_s2=90.0,
                 max_following_error_deg=5.0,
                 feedback_timeout_s=0.25,
             ),
