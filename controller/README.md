@@ -113,10 +113,10 @@ source .venv/bin/activate
 ./monitoring/monitor.py --reload --host 127.0.0.1 --port 8080
 ```
 
-Start the main service, from `controller/ui/` 
+Start the main service, from `controller/` 
 
 ```bash
-cd ./controller
+source .venv/bin/activate
 ./main.py --demo
 ```
 
