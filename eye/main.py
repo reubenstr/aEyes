@@ -159,7 +159,12 @@ class Eye:
                 commanded = position  # Seed only; start the new trajectory next tick.
             else:
                 previous = profile.state.position
-                commanded = self.ramp_target(name, target, dt)
+                # Brake toward the lead boundary before triggering a fault hold.
+                # Recompute from measured feedback so a slow motor can keep moving
+                # without repeatedly resetting the profile to rest.
+                lead = limits.max_following_error_deg
+                tracking_target = max(position - lead, min(position + lead, target))
+                commanded = self.ramp_target(name, tracking_target, dt)
                 if abs(commanded - position) > limits.max_following_error_deg:
                     profile.reset(previous)
                     self._motion_ready[name] = False
@@ -295,6 +300,7 @@ class Eye:
                         last_motion_status = None
                     connected = True
                     self.eye_renderer.apply_control_message(msg)
+                    self.eye_renderer.set_text(TextType.INFO, "")
                 except zmq.Again:
                     pass
                 except (ValueError, TypeError, KeyError) as error:
