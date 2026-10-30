@@ -153,3 +153,11 @@ Restart the services allow recent code changes to take effect:
 ```bash
 sudo systemctl restart main.service aeyes-monitor.service
 ```
+
+# Troubleshooting
+
+## Websocket
+
+```bash
+websocat ws://192.168.5.100:9000
+```
