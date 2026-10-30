@@ -36,7 +36,6 @@ def motor_config() -> List[MotorConfig]:
             motion=MotionLimits(
                 max_speed_deg_s=45.0,
                 max_acceleration_deg_s2=90.0,
-                max_jerk_deg_s3=360.0,
                 max_following_error_deg=5.0,
                 feedback_timeout_s=0.25,
             ),
@@ -54,7 +53,6 @@ def motor_config() -> List[MotorConfig]:
             motion=MotionLimits(
                 max_speed_deg_s=30.0,
                 max_acceleration_deg_s2=60.0,
-                max_jerk_deg_s3=240.0,
                 max_following_error_deg=5.0,
                 feedback_timeout_s=0.25,
             ),

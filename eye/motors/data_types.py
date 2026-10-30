@@ -29,14 +29,13 @@ class MotionLimits:
     """Eye-side trajectory limits in output degrees and seconds, not CAN units."""
     max_speed_deg_s: float = 30.0
     max_acceleration_deg_s2: float = 60.0
-    max_jerk_deg_s3: float = 240.0
     max_following_error_deg: float = 5.0
     feedback_timeout_s: float = 0.25
 
     def __post_init__(self):
         if not all(math.isfinite(value) and value > 0 for value in (
                 self.max_speed_deg_s, self.max_acceleration_deg_s2,
-                self.max_jerk_deg_s3, self.max_following_error_deg, self.feedback_timeout_s)):
+                self.max_following_error_deg, self.feedback_timeout_s)):
             raise ValueError("Motion limits must be finite and positive")
 
 

@@ -248,9 +248,13 @@ class MotorControlTests(unittest.TestCase):
         self.assertLessEqual(abs(after.velocity), limits.max_speed_deg_s + 1e-7)
         self.assertLessEqual(abs(after.acceleration), limits.max_acceleration_deg_s2 + 1e-7)
         self.assertLessEqual(abs(after.velocity - before.velocity), limits.max_acceleration_deg_s2 * dt + 1e-7)
-        self.assertLessEqual(abs(after.acceleration - before.acceleration), limits.max_jerk_deg_s3 * dt + 1e-7)
+        self.assertLessEqual(abs(after.position - before.position), limits.max_speed_deg_s * dt + 1e-7)
+        stopping_position = (after.position + after.velocity * abs(after.velocity)
+                             / (2.0 * limits.max_acceleration_deg_s2))
+        self.assertGreaterEqual(stopping_position, profile.minimum - 1e-7)
+        self.assertLessEqual(stopping_position, profile.maximum + 1e-7)
 
-    def test_ramp_accelerates_and_brakes_with_bounded_speed_acceleration_and_jerk(self):
+    def test_ramp_accelerates_and_brakes_with_bounded_speed_and_acceleration(self):
         eye = self.eye()
         for name, target in ((self.MotorName.BASE, 45.), (self.MotorName.EYE, -45.)):
             profile = eye._motion[name]
@@ -265,10 +269,10 @@ class MotorControlTests(unittest.TestCase):
             self.assertEqual(profile.state.position, target)
             self.assertEqual(profile.state.velocity, 0.)
             self.assertEqual(profile.state.acceleration, 0.)
-            self.assertLess(velocities[0], max(velocities) / 100.)
+            self.assertLessEqual(velocities[0], profile.limits.max_acceleration_deg_s2 * .005)
             self.assertGreater(max(velocities), 10.)
 
-    def test_retargeting_preserves_velocity_and_acceleration_and_joint_limits(self):
+    def test_retargeting_preserves_velocity_and_joint_limits(self):
         eye = self.eye()
         profile = eye._motion[self.MotorName.BASE]
         for tick in range(2200):
@@ -319,28 +323,87 @@ class MotorControlTests(unittest.TestCase):
                    for name, position in zip(self.eye_module.MOTOR_NAMES, measured)}
         return eye._update_motor_motion(targets, samples, now, dt)
 
-    def test_motion_seeds_from_feedback_and_pauses_without_accumulating_stall_progress(self):
+    def test_motion_brakes_at_feedback_lead_limit_without_repeated_fault_holds(self):
         eye = self.eye()
         eye.motors = SimpleNamespace(set_motor_targets=Mock())
         self.assertEqual(self.motion_tick(eye, 10., (10., -10.)), '')
         self.assertEqual((eye.commanded_yaw, eye.commanded_pitch), (10., -10.))
-        hold = None
+        start = eye.commanded_yaw
         for tick in range(1000):
             status = self.motion_tick(eye, 10. + tick * .005, (10., -10.))
-            if 'BASE' in status:
-                hold = eye.commanded_yaw
-                break
-        self.assertIsNotNone(hold)
-        self.assertLessEqual(abs(hold - 10.), 5.)
-        for tick in range(500):
-            self.motion_tick(eye, 20. + tick * .005, (10., -10.))
-            self.assertEqual(eye.commanded_yaw, hold)
-        # Recovery requires the motor to catch up, then begins at rest from its
-        # measured position, with no stored trajectory to jump through.
-        self.motion_tick(eye, 30., (hold, eye.commanded_pitch))
+            self.assertEqual(status, '')
+            self.assertLessEqual(eye.commanded_yaw - start, 5. + 1e-8)
+        self.assertEqual(eye.commanded_yaw, 15.)
+        # Progress resumes immediately as feedback advances, without a fault reset.
+        self.motion_tick(eye, 30., (10.1, -10.))
+        self.assertGreater(eye.commanded_yaw, 15.)
+        self.assertTrue(eye._motion_ready[self.MotorName.BASE])
+
+    def test_large_feedback_jump_still_holds_until_motor_catches_up(self):
+        eye = self.eye()
+        eye.motors = SimpleNamespace(set_motor_targets=Mock())
+        self.motion_tick(eye, 10., (0., 0.))
+        for tick in range(100):
+            self.motion_tick(eye, 10. + tick * .005,
+                             (eye.commanded_yaw, eye.commanded_pitch))
+        held = eye.commanded_yaw
+        status = self.motion_tick(eye, 11., (held - 10., eye.commanded_pitch))
+        self.assertIn('BASE: motion paused (motor following error)', status)
+        self.assertEqual(eye.commanded_yaw, held)
+        self.motion_tick(eye, 11.005, (held - 4., eye.commanded_pitch))
+        self.assertEqual(eye.commanded_yaw, held)
+        self.motion_tick(eye, 11.01, (held, eye.commanded_pitch))
         self.assertEqual(eye._motion[self.MotorName.BASE].state.velocity, 0.)
-        self.motion_tick(eye, 30.005, (hold, eye.commanded_pitch))
-        self.assertLess(eye.commanded_yaw - hold, .001)
+
+    def test_slow_motor_tracks_large_move_without_periodic_fault_resets(self):
+        eye = self.eye()
+        eye.motors = SimpleNamespace(set_motor_targets=Mock())
+        measured = 0.
+        self.motion_tick(eye, 10., (measured, 0.), targets=(40., 0.))
+        for tick in range(1, 1001):
+            # A motor limited to 15 deg/s cannot follow the 45 deg/s yaw profile.
+            measured += max(-15. * .005, min(15. * .005, eye.commanded_yaw - measured))
+            previous = eye.commanded_yaw
+            status = self.motion_tick(eye, 10. + tick * .005,
+                                      (measured, 0.), targets=(40., 0.))
+            self.assertEqual(status, '')
+            self.assertNotIn(self.MotorName.BASE, eye._lag_holds)
+            self.assertGreaterEqual(eye.commanded_yaw, previous - 1e-8)
+            self.assertLessEqual(eye.commanded_yaw - measured, 5. + 1e-8)
+        self.assertAlmostEqual(measured, 40.)
+        self.assertEqual(eye.commanded_yaw, 40.)
+
+    def test_yaw_large_step_finishes_at_speed_and_acceleration_limits(self):
+        eye = self.eye()
+        profile = eye._motion[self.MotorName.BASE]
+        # 45 degrees at 45 deg/s and 90 deg/s^2 takes 1.5 s, with no curve delay.
+        for _ in range(299):
+            profile.advance(45., .005)
+        self.assertLess(profile.state.position, 45.)
+        profile.advance(45., .005)
+        self.assertAlmostEqual(profile.state.position, 45.)
+        self.assertAlmostEqual(profile.state.velocity, 0.)
+
+    def test_new_goal_brakes_immediately_instead_of_finishing_previous_path(self):
+        eye = self.eye()
+        profile = eye._motion[self.MotorName.BASE]
+        for _ in range(100):
+            profile.advance(45., .005)
+        before = profile.state
+        after = profile.advance(-45., .005)
+        self.assertLess(after.velocity, before.velocity)
+        self.assertLess(after.acceleration, 0.)
+        self.assert_motion_bounds(before, after, .005, profile)
+
+    def test_small_target_changes_retain_velocity_without_restart(self):
+        eye = self.eye()
+        profile = eye._motion[self.MotorName.BASE]
+        for _ in range(40):
+            profile.advance(30., .005)
+        before = profile.state
+        after = profile.advance(30.01, .005)
+        self.assertGreater(after.velocity, before.velocity)
+        self.assert_motion_bounds(before, after, .005, profile)
 
     def test_stale_missing_nonfinite_or_outside_limit_feedback_holds_last_target(self):
         for bad_sample in (None, (0., 0., 9.), (0., 0., 11.),
@@ -405,6 +468,14 @@ class MotorControlTests(unittest.TestCase):
             eye._worker()
         return eye, commands
 
+    def test_worker_clears_waiting_text_after_valid_message(self):
+        eye, _ = self.run_motion_worker([(0., 40., -40.)], .05)
+        eye.eye_renderer.apply_control_message.assert_called_once()
+        self.assertEqual(
+            [call.args for call in eye.eye_renderer.set_text.call_args_list],
+            [(self.eye_module.TextType.INFO, 'Waiting for data'),
+             (self.eye_module.TextType.INFO, '')])
+
     def test_worker_timeout_holds_commands_and_reconnect_starts_at_rest(self):
         with patch.object(self.eye_module, 'MESSAGE_TIMEOUT_SECONDS', .15):
             eye, commands = self.run_motion_worker([(0., 40., -40.), (.4, -40., 40.)], .5)
@@ -415,9 +486,13 @@ class MotorControlTests(unittest.TestCase):
         self.assertEqual(after[0][2], before[-1][2])
         self.assertEqual(after[0][3].velocity, 0.)
         self.assertEqual(after[0][3].acceleration, 0.)
-        self.assertLess(abs(after[1][2] - after[0][2]), .001)
+        acceleration = eye._motion[self.MotorName.BASE].limits.max_acceleration_deg_s2
+        self.assertAlmostEqual(abs(after[1][2] - after[0][2]), .5 * acceleration * .005**2)
         self.assertTrue(any('Data timeout!' in str(call)
                             for call in eye.eye_renderer.set_text.call_args_list))
+        self.assertEqual(eye.eye_renderer.set_text.call_args_list[-1].args,
+                         (self.eye_module.TextType.INFO, ''))
+        self.assertEqual(eye.eye_renderer.apply_control_message.call_count, 2)
 
     def test_worker_timing_stall_reseeds_without_integrating_the_gap(self):
         eye, commands = self.run_motion_worker([(0., 40., 0.)], .8, timing_jump=(.2, .3))
@@ -426,7 +501,8 @@ class MotorControlTests(unittest.TestCase):
         self.assertEqual(resumed[0][2], -12.)
         self.assertEqual(resumed[0][3].velocity, 0.)
         self.assertEqual(resumed[0][3].acceleration, 0.)
-        self.assertLess(resumed[1][2] - resumed[0][2], .001)
+        acceleration = eye._motion[self.MotorName.BASE].limits.max_acceleration_deg_s2
+        self.assertAlmostEqual(resumed[1][2] - resumed[0][2], .5 * acceleration * .005**2)
 
     def test_motor_progress_between_messages_is_independent_of_message_rate(self):
         positions = []
