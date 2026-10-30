@@ -18,7 +18,7 @@ tracker:
   static_window: 1000
   static_speed_thresh_mps: 0.15
   mahalanobis_gate: 11.345
-  min_detection_confidence: 0.5
+  min_detection_confidence: 0.80
   min_bbox_iou: 0.2
   depth_grace_s: 0.5
   coast_time_s: 0.25

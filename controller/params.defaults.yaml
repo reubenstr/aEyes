@@ -45,7 +45,7 @@ tracker:
   static_window: 1000            # Nominal frames defining the rolling time window.
   static_speed_thresh_mps: 0.15  # Max speed to be considered static [m/s].  range: 0.01–1.0
   mahalanobis_gate: 11.345       # Squared 3D innovation gate (99% chi-square).
-  min_detection_confidence: 0.5
+  min_detection_confidence: 0.8
   min_bbox_iou: 0.2             # Image-only association during a brief depth failure.
   depth_grace_s: 0.5            # Maximum time to associate without a valid depth sample.
   coast_time_s: 0.25            # Maximum public extrapolation beyond the last valid XYZ.

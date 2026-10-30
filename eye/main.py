@@ -318,20 +318,21 @@ class Eye:
             
             if connected and self.motors:
 
-                # skip smoothing for now                
-                #if elapsed > MAX_MOTION_STEP_SECONDS:
-                #     self._reset_motion()
+                # skip smoothing for now  
+                #               
+                if elapsed > MAX_MOTION_STEP_SECONDS:
+                     self._reset_motion()
 
-                # dt = min(elapsed, MAX_MOTION_STEP_SECONDS)
-                # self._update_motor_motion(targets, samples, now, dt)
+                dt = min(elapsed, MAX_MOTION_STEP_SECONDS)
+                self._update_motor_motion(targets, samples, now, dt)
                    
-                self.commanded_yaw, self.commanded_pitch = targets
-                self.motors.set_motor_targets(
-                    MotorName.BASE, MotorSpeeds.FAST, self.commanded_yaw
-                )
-                self.motors.set_motor_targets(
-                    MotorName.EYE, MotorSpeeds.FAST, self.commanded_pitch
-                )              
+                #self.commanded_yaw, self.commanded_pitch = targets
+                #self.motors.set_motor_targets(
+                #    MotorName.BASE, MotorSpeeds.FAST, self.commanded_yaw
+                #)
+                #self.motors.set_motor_targets(
+                #    MotorName.EYE, MotorSpeeds.FAST, self.commanded_pitch
+                #)              
              
             sleep(0.005)
 
