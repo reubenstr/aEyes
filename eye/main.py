@@ -310,14 +310,11 @@ class Eye:
                 self._reset_motion()
                 self.eye_renderer.set_text(TextType.ERROR, "Data timeout!")
             if connected and self.motors:
-                self.commanded_yaw = self.ramp_target(self.commanded_yaw, targets[0], dt)
-                self.commanded_pitch = self.ramp_target(self.commanded_pitch, targets[1], dt)
-                
-                self.commanded_yaw = targets[0]
-                self.commanded_pitch = targets[1]
-                
-                self.motors.set_motor_targets(MotorName.BASE, MotorSpeeds.FAST, self.commanded_yaw)
-                self.motors.set_motor_targets(MotorName.EYE, MotorSpeeds.FAST, self.commanded_pitch)
+                if elapsed > MAX_MOTION_STEP_SECONDS:
+                    self._reset_motion()
+
+                dt = min(elapsed, MAX_MOTION_STEP_SECONDS)
+                self._update_motor_motion(targets, samples, now, dt)
             sleep(0.005)
 
     ###############################################################################
