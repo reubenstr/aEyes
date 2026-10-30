@@ -46,7 +46,13 @@ class FakeBus:
         self.sent.append(message)
         self.queue.extend(self.noise)
         if message.data[0] not in self.missing:
-            self.queue.append(frame(message.arbitration_id, self.payloads[message.data[0]]))
+            if message.data[0] == 0x40:
+                parameter_id = message.data[1]
+                # Include uint16 PID values that cannot fit the old byte-sized layout.
+                data = bytes([0x40, parameter_id, 0x34, 0x12, 0x78, 0x56, 0xBC, 0x9A])
+            else:
+                data = self.payloads[message.data[0]]
+            self.queue.append(frame(message.arbitration_id, data))
 
     def recv(self, timeout):
         return self.queue.pop(0) if self.queue else None
@@ -140,10 +146,34 @@ class MotorInfoTests(unittest.TestCase):
         self.assertTrue(self.bus.closed)
 
     def test_write_or_motion_commands_are_rejected_before_sending(self):
-        for command in (0x31, 0x34, 0x80, 0x88, 0xA1, 0xA4, 0x19):
+        for command in (0x31, 0x34, 0x40, 0x42, 0x44, 0x80, 0x88, 0xA1, 0xA4, 0x19):
             with self.assertRaises(ValueError):
                 self.script.read_reply(self.bus, 1, command, 0.25, 2)
         self.assertEqual(self.bus.sent, [])
+
+    def test_parameter_probe_reads_limits_even_when_legacy_settings_do_not_reply(self):
+        self.bus.missing = (0x30, 0x33)
+        status, output = self.run_report("--parameter-reads", "--motor", "BASE", "--json")
+        readings = json.loads(output)["motors"][0]["reads"]
+        self.assertEqual(status, 1)  # Legacy reads remain explicitly unavailable.
+        self.assertIn("error", readings["0x30"])
+        self.assertEqual(readings["0x40/0x96"]["values"],
+                         {"kp_raw": 0x1234, "ki_raw": 0x5678, "kd_raw": 0x9ABC})
+        self.assertEqual(readings["0x40/0x99"]["values"]["max_torque_current_raw"], 0x1234)
+        self.assertEqual(readings["0x40/0x9A"]["values"]["max_speed_raw"], 0x56781234)
+        self.assertEqual(readings["0x40/0x9E"]["values"]["speed_ramp_raw"], 0x56781234)
+        probes = [message for message in self.bus.sent if message.data[0] == 0x40]
+        self.assertEqual([message.data[1] for message in probes], [0x96, 0x97, 0x98, 0x99, 0x9A, 0x9E])
+        self.assertTrue(all(message.data[2:] == bytes(6) for message in probes))
+
+    def test_parameter_reply_must_echo_the_requested_parameter(self):
+        self.bus.noise = [frame(data=bytes([0x40, 0x97]) + bytes(6))]
+        data = self.script.read_reply(self.bus, 1, 0x40, 0.25, 2, parameter_id=0x96)
+        self.assertEqual(data[1], 0x96)
+        self.assertEqual(self.bus.sent[0].data, bytes([0x40, 0x96]) + bytes(6))
+        for command, parameter_id in ((0x40, 0), (0x40, 0xFF), (0x30, 0x96), (0x42, 0x96)):
+            with self.assertRaises(ValueError):
+                self.script.read_reply(self.bus, 1, command, 0.25, 2, parameter_id=parameter_id)
 
     def test_bus_failure_produces_a_report_for_both_motors(self):
         self.can.interface.Bus.side_effect = self.can.CanError("interface unavailable")
