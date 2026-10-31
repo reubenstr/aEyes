@@ -55,6 +55,35 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.save(raw, revision(self.values))
 
+    def test_periodic_blink_pause_validation(self):
+        key = 'periodic_blink_mean_pause_s'
+        for value in (-1, float('nan'), float('inf'), -float('inf'), True, '5', None):
+            raw = deepcopy(self.values)
+            raw['eye_manager'][key] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parse_params(raw)
+
+    def test_periodic_blink_pause_defaults_metadata_and_persistence(self):
+        key = 'periodic_blink_mean_pause_s'
+        config = self.store.describe(active=self.values)
+        self.assertEqual(config['defaults']['eye_manager'][key], 5.0)
+        self.assertEqual(self.store.read(ROOT / 'params.yaml')['eye_manager'][key], 5.0)
+        metadata = config['fields']['eye_manager'][key]
+        self.assertEqual(metadata['type'], 'number')
+        self.assertFalse(metadata['nullable'])
+        self.assertIn('average open-eye pause in seconds', metadata['description'])
+        self.assertIn('independently at random', metadata['description'])
+        self.assertIn('zero disables periodic blinks', metadata['description'])
+        for value in (8.5, 0.0):
+            raw = deepcopy(config['saved'])
+            raw['eye_manager'][key] = value
+            self.store.save(raw, config['revision'])
+            config = self.store.describe(active=self.values)
+            self.assertEqual(config['saved']['eye_manager'][key], value)
+            self.assertEqual(config['active']['eye_manager'][key], 5.0)
+            self.assertEqual(config['defaults']['eye_manager'][key], 5.0)
+            self.assertTrue(config['pending_restart'])
+
     def test_atomic_save_revision_backup_and_reset_baseline(self):
         original = self.path.read_bytes()
         raw = deepcopy(self.values)

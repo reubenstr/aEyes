@@ -21,14 +21,17 @@ class EyeManagerRenderTests(unittest.TestCase):
         settings = patch.object(params, "eye_manager", replace(params.eye_manager))
         settings.start()
         self.addCleanup(settings.stop)
+        pauses = patch("eye_manager.random.expovariate", return_value=60.0)
+        self.sample_pause = pauses.start()
+        self.addCleanup(pauses.stop)
         self.configs = [EyeConfig(1), EyeConfig(2, Position3D(0.0, 1.0, 0.0))]
         self.manager = EyeManager(self.configs, CameraConfig())
         self.assignments = {1: 7, 2: None}
         self.manager._eye_assigner.update = Mock(side_effect=lambda _: self.assignments.copy())
 
-    def step(self, distance: float | None, dt: float):
+    def step(self, distance: float | None, dt: float, face_id: int = 7):
         self.now += dt
-        faces = {} if distance is None else {7: TrackedFace(Position3D(distance, 0.0, 0.0))}
+        faces = {} if distance is None else {face_id: TrackedFace(Position3D(distance, 0.0, 0.0))}
         return self.manager.update(faces)
 
     def test_distance_endpoints_and_midpoint(self) -> None:
@@ -110,6 +113,154 @@ class EyeManagerRenderTests(unittest.TestCase):
         self.assertIsNone(self.manager._blink_starts[1])
         self.assertAlmostEqual(openness[-1], self.manager._states[1].resting_eye_lid)
 
+    def test_eyes_tracking_the_same_face_have_independent_random_pauses(self) -> None:
+        params.eye_manager.periodic_blink_mean_pause_s = 8.0
+        self.sample_pause.side_effect = [0.25, 4.0]
+        self.assignments[2] = 7
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.sample_pause.assert_not_called()
+        self.step(3.0, 0.5)
+        self.assertEqual(self.sample_pause.call_count, 2)
+        self.sample_pause.assert_called_with(1.0 / 8.0)
+        self.assertEqual(self.manager._next_blink_times, {1: self.now + 0.25, 2: self.now + 4.0})
+
+        self.step(3.0, 0.125)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.step(3.0, 0.125)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.assertIsNone(self.manager._blink_starts[2])
+        states = self.step(3.0, 0.5)
+        self.assertEqual(states[1].eye_lid, 0.0)
+        self.assertEqual(states[2].eye_lid, states[2].resting_eye_lid)
+        self.assertEqual(self.sample_pause.call_count, 2)
+
+    def test_periodic_blink_closes_at_15_hz_and_reopens_to_current_distance(self) -> None:
+        self.sample_pause.side_effect = [0.25, 60.0]
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.25)
+        openness = [self.step(0.5, 1 / 15)[1].eye_lid for _ in range(18)]
+        self.assertIn(0.0, openness)
+        state = self.manager._states[1]
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.assertAlmostEqual(openness[-1], state.resting_eye_lid)
+        self.assertGreater(state.resting_eye_lid, 0.99)
+        self.assertEqual(self.sample_pause.call_count, 2)
+
+    def test_zero_and_short_pauses_allow_repeats_with_an_open_frame_between(self) -> None:
+        self.sample_pause.side_effect = [0.0, 0.01]
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        reopened = self.step(3.0, 0.5)[1]
+        self.assertEqual(reopened.eye_lid, reopened.resting_eye_lid)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.assertEqual(self.manager._next_blink_times[1], self.now)
+
+        self.step(3.0, 0.0)
+        start = self.now
+        self.assertEqual(self.manager._blink_starts[1], start)
+        self.assertIsNone(self.manager._next_blink_times[1])
+        self.assertEqual(self.step(3.0, 0.5)[1].eye_lid, 0.0)
+        self.assertEqual(self.manager._blink_starts[1], start)
+        reopened = self.step(3.0, 0.5)[1]
+        self.assertEqual(reopened.eye_lid, reopened.resting_eye_lid)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.step(3.0, 0.005)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.step(3.0, 0.006)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.assertEqual(self.sample_pause.call_count, 2)
+
+    def test_long_pauses_and_delayed_updates_do_not_replay_missed_blinks(self) -> None:
+        self.sample_pause.side_effect = [30.0, 4.0]
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.step(3.0, 29.0)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.step(3.0, 100.0)
+        start = self.now
+        self.assertEqual(self.manager._blink_starts[1], start)
+        self.assertEqual(self.sample_pause.call_count, 1)
+
+        # Even if updates skip the entire animation, publish closure before reopening.
+        self.assertEqual(self.step(3.0, 100.0)[1].eye_lid, 0.0)
+        self.assertEqual(self.manager._blink_starts[1], start)
+        reopened = self.step(3.0, 0.0)[1]
+        self.assertEqual(reopened.eye_lid, reopened.resting_eye_lid)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.assertEqual(self.manager._next_blink_times[1], self.now + 4.0)
+        self.assertEqual(self.sample_pause.call_count, 2)
+
+    def test_assignment_loss_clears_pending_blink_and_reacquisition_starts_fresh(self) -> None:
+        self.sample_pause.side_effect = [0.25, 5.0]
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.assignments[1] = None
+        self.step(None, 100.0)
+        self.assertIsNone(self.manager._next_blink_times[1])
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.step(None, 100.0)
+        self.assertEqual(self.sample_pause.call_count, 1)
+
+        self.assignments[1] = 7
+        self.step(3.0, 0.0)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.assertIsNone(self.manager._next_blink_times[1])
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.assertEqual(self.manager._next_blink_times[1], self.now + 5.0)
+
+    def test_assignment_loss_allows_active_periodic_blink_to_finish(self) -> None:
+        self.sample_pause.return_value = 0.0
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.25)
+        start = self.manager._blink_starts[1]
+        self.assignments[1] = None
+        self.assertEqual(self.step(None, 0.25)[1].eye_lid, 0.0)
+        self.assertEqual(self.manager._blink_starts[1], start)
+        reopened = self.step(None, 0.5)[1]
+        self.assertEqual(reopened.eye_lid, reopened.resting_eye_lid)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.assertIsNone(self.manager._next_blink_times[1])
+        self.step(None, 100.0)
+        self.sample_pause.assert_called_once()
+
+    def test_reassignment_discards_pending_deadline_and_samples_a_fresh_pause(self) -> None:
+        self.sample_pause.side_effect = [100.0, 2.0]
+        self.step(3.0, 0.0)
+        self.step(3.0, 0.5)
+        self.step(3.0, 0.5)
+        self.assignments[1] = 8
+        self.step(0.5, 0.1, face_id=8)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.assertIsNone(self.manager._next_blink_times[1])
+        self.step(0.5, 0.5, face_id=8)
+        self.step(0.5, 0.5, face_id=8)
+        self.assertEqual(self.manager._next_blink_times[1], self.now + 2.0)
+        self.assertEqual(self.sample_pause.call_count, 2)
+
+    def test_zero_mean_pause_disables_periodic_blinks_but_keeps_assignment_blinks(self) -> None:
+        params.eye_manager.periodic_blink_mean_pause_s = 0.0
+        self.step(3.0, 0.0)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.assertEqual(self.step(3.0, 0.5)[1].eye_lid, 0.0)
+        self.step(3.0, 0.5)
+        self.assertIsNone(self.manager._next_blink_times[1])
+        idle = self.step(3.0, 100.0)[1]
+        self.assertEqual(idle.eye_lid, idle.resting_eye_lid)
+        self.assertIsNone(self.manager._blink_starts[1])
+        self.assignments[1] = 8
+        self.step(3.0, 0.0, face_id=8)
+        self.assertEqual(self.manager._blink_starts[1], self.now)
+        self.sample_pause.assert_not_called()
+
     def test_target_loss_smoothly_returns_to_neutral_palette_and_opening(self) -> None:
         self.step(0.5, 2.0)
         self.step(0.5, 1.0)
@@ -167,6 +318,8 @@ class EyeManagerRenderTests(unittest.TestCase):
             ("radius", 0), ("sclera_color", [256, 0, 0]),
             ("eyelid_near_distance_m", 3.0), ("eyelid_far_distance_m", float("inf")),
             ("eyelid_near_openness", 0.4), ("eyelid_smoothing_rate", 0),
+            ("periodic_blink_mean_pause_s", -1), ("periodic_blink_mean_pause_s", float("nan")),
+            ("periodic_blink_mean_pause_s", float("inf")),
         ):
             with self.subTest(name=name, value=value), patch.object(params.eye_manager, name, value):
                 with self.assertRaises(ValueError):

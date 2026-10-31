@@ -32,6 +32,7 @@ eye_manager:
   color_in_rate: 2.0
   color_out_rate: 4.0
   blink_rate: 1.0
+  periodic_blink_mean_pause_s: 5.0
   radius: 1.0
   curvature: 0.2
   iris_size: 0.5

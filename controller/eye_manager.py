@@ -70,6 +70,10 @@ class EyeManager:
             cfg.eye_id: None for cfg in eye_configs
         }
         self._blink_closed: set[EyeId] = set()
+        # Independent periodic blink deadlines, sampled after each blink finishes.
+        self._next_blink_times: dict[EyeId, float | None] = {
+            cfg.eye_id: None for cfg in eye_configs
+        }
 
         self._last_update: float = time.monotonic()
 
@@ -141,16 +145,27 @@ class EyeManager:
                     target = self._resting_openness_for_distance(distance)
             state.resting_eye_lid += (target - state.resting_eye_lid) * blend
 
+    def _start_blink(self, eye_id: EyeId, now: float) -> None:
+        self._blink_starts[eye_id] = now
+        self._blink_closed.discard(eye_id)
+        self._next_blink_times[eye_id] = None
+
     def _update_blinks(self, now: float) -> None:
-        """Animate eye_lid as a blink (open → closed → open) when a new face is assigned."""
+        """Animate assignment blinks and independent random blinks for assigned eyes."""
         blink_duration = 1.0 / self.BLINK_RATE
         half = blink_duration / 2.0
+        mean_pause = self._params.periodic_blink_mean_pause_s
 
         for eye_id, state in self._states.items():
             start = self._blink_starts[eye_id]
             if start is None:
-                state.eye_lid = state.resting_eye_lid
-                continue
+                deadline = self._next_blink_times[eye_id]
+                if deadline is not None and now >= deadline:
+                    self._start_blink(eye_id, now)
+                    start = now
+                else:
+                    state.eye_lid = state.resting_eye_lid
+                    continue
 
             elapsed = now - start
             # At 15 Hz the midpoint can fall between updates; send one fully closed frame.
@@ -160,6 +175,9 @@ class EyeManager:
             elif elapsed >= blink_duration:
                 state.eye_lid = state.resting_eye_lid
                 self._blink_starts[eye_id] = None
+                # Scheduling here guarantees an open frame even for a zero pause.
+                if state.face_id is not None and mean_pause > 0.0:
+                    self._next_blink_times[eye_id] = now + random.expovariate(1.0 / mean_pause)
             elif elapsed < half:
                 state.eye_lid = state.resting_eye_lid * (1.0 - elapsed / half)
             else:
@@ -215,10 +233,10 @@ class EyeManager:
             if face_id is not None:
                 self._set_palette(state, self._face_colors[face_id])
                 if prev_face_id != face_id:
-                    self._blink_starts[eye_id] = now
-                    self._blink_closed.discard(eye_id)
+                    self._start_blink(eye_id, now)
             else:
                 self._set_palette(state, None)
+                self._next_blink_times[eye_id] = None
 
         self._lerp_colors(dt)
         self._update_resting_eyelids(tracked_faces, dt)

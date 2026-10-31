@@ -70,7 +70,8 @@ assigner:
 eye_manager:
   color_in_rate: 2.0         # Lerp speed toward face color [units/s]. Higher = faster.
   color_out_rate: 4.0        # Lerp speed back toward grey [units/s].
-  blink_rate: 1.0            # Blink animation speed on new face assignment [blinks/s].
+  blink_rate: 1.0            # Animation speed for assignment and periodic blinks [blinks/s].
+  periodic_blink_mean_pause_s: 5.0 # Mean random open-eye pause per assigned eye [s]; 0 disables periodic blinks.
 
   # Static appearance. Restart the controller after editing these values.
   radius: 1.0               # Outer eye radius in shader coordinates; independent of iris/pupil size.
