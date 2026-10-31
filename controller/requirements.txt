@@ -1,4 +1,3 @@
-opencv-python
 pyyaml
 gpiozero==2.0.1
 numpy==2.4.3

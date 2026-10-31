@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=@USER@
-WorkingDirectory="@ROOT@"
+WorkingDirectory=@WORKDIR@
 ExecStart="@ROOT@/.venv/bin/python" "@ROOT@/main.py"
 Restart=on-failure
 RestartSec=5s

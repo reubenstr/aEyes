@@ -98,11 +98,8 @@ install_python_dependencies() {
         echo "requirements.txt not found!" >&2
         exit 1
     fi
-    if [ ! -x "$VENV_DIR/bin/python" ]; then
-        sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR" --system-site-packages
-    else
-        echo "Using existing virtual environment: $VENV_DIR"
-    fi
+    # Also give existing environments access to the apt-installed GPIO backend.
+    sudo -u "$USER_NAME" python3 -m venv "$VENV_DIR" --system-site-packages
     sudo -u "$USER_NAME" "$VENV_DIR/bin/python" -m pip install --upgrade pip
     sudo -u "$USER_NAME" "$VENV_DIR/bin/python" -m pip install -r "$ROOT_DIR/requirements.txt"
 }
@@ -180,9 +177,12 @@ from pathlib import Path
 import sys
 root, user, output = sys.argv[1:]
 escaped_root = root.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
+working_directory = root.replace('%', '%%')
 for filename in ('main.service', 'aeyes-monitor.service', 'aeyes-monitor.sudoers'):
     text = (Path(root) / 'deploy' / filename).read_text()
-    (Path(output) / filename).write_text(text.replace('@ROOT@', escaped_root).replace('@USER@', user))
+    (Path(output) / filename).write_text(text.replace('@ROOT@', escaped_root)
+                                       .replace('@WORKDIR@', working_directory)
+                                       .replace('@USER@', user))
 PY
     visudo -cf "$TASK_TMP/aeyes-monitor.sudoers"
     install -m 0440 "$TASK_TMP/aeyes-monitor.sudoers" /etc/sudoers.d/aeyes-monitor
@@ -196,8 +196,9 @@ PY
 install_shutdown_service() {
     require_commands systemctl
     prepare_tmp
-    # Escape systemd specifiers and quoted paths in the generated unit.
-    local service_root service_home
+    # WorkingDirectory takes a literal path; ExecStart and Environment use quotes.
+    local service_workdir service_root service_home
+    service_workdir="${ROOT_DIR//%/%%}"
     service_root="${ROOT_DIR//\\/\\\\}"
     service_root="${service_root//\"/\\\"}"
     service_root="${service_root//%/%%}"
@@ -211,7 +212,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
-WorkingDirectory="$service_root"
+WorkingDirectory=$service_workdir
 Environment=DISPLAY=:0
 Environment="XAUTHORITY=$service_home/.Xauthority"
 ExecStart="$service_root/.venv/bin/python" "$service_root/shutdown.py" --service

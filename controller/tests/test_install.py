@@ -30,7 +30,8 @@ class InstallerTests(unittest.TestCase):
         self.installed = self.root / 'installed'
         self.installed.mkdir()
 
-    def run_installer(self, answers='', args=(), real_components=(), extra_shell=''):
+    def run_installer(self, answers='', args=(), real_components=(), extra_shell='',
+                      source_root=CONTROLLER):
         shell = r'''
 source "$1"
 shift
@@ -66,7 +67,7 @@ install() {
             ['bash', '-c', shell, 'installer-test', str(INSTALLER), *args],
             input=answers, text=True, capture_output=True, timeout=10,
             env={**os.environ, 'INSTALL_TEST_ROOT': str(self.root),
-                 'INSTALL_SOURCE_ROOT': str(CONTROLLER)},
+                 'INSTALL_SOURCE_ROOT': str(source_root)},
         )
 
     def actions(self, result):
@@ -160,13 +161,42 @@ install() {
         self.assertNotIn('APT ', result.stdout)
         self.assertNotIn('SYSTEMCTL ', result.stdout)
 
+    def test_existing_venv_gains_system_packages_and_preserves_installed_packages(self):
+        venv = self.root / '.venv'
+        subprocess.run([shutil.which('python3'), '-m', 'venv', '--without-pip', str(venv)],
+                       check=True, text=True, capture_output=True, timeout=10)
+        config = venv / 'pyvenv.cfg'
+        self.assertIn('include-system-site-packages = false', config.read_text())
+        package = next(venv.glob('lib/python*/site-packages')) / 'aeyes_install_test_package.py'
+        package.write_text('VALUE = 42\n')
+
+        result = self.run_installer(
+            self.select('install_python_dependencies'),
+            real_components=('install_python_dependencies',), extra_shell=r'''
+sudo() {
+    echo "SUDO $*"
+    # Reconfigure the fixture's real venv, with no pip bootstrap or package downloads.
+    if [ "${3:-}" = python3 ] && [ "${4:-}" = -m ] && [ "${5:-}" = venv ]; then
+        shift 2
+        "$@" --without-pip
+    fi
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('include-system-site-packages = true', config.read_text())
+        check = subprocess.run(
+            [str(venv / 'bin/python'), '-c',
+             'import aeyes_install_test_package; print(aeyes_install_test_package.VALUE)'],
+            check=True, text=True, capture_output=True, timeout=10)
+        self.assertEqual(check.stdout.strip(), '42')
+
     def test_application_service_installation_renders_units_and_enables_and_starts_them(self):
         result = self.run_installer(self.select('install_application_services'),
                                     real_components=('install_application_services',))
         self.assertEqual(result.returncode, 0, result.stderr)
         unit = (self.installed / 'main.service').read_text()
         self.assertIn('User=installer_test', unit)
-        self.assertIn(f'WorkingDirectory="{CONTROLLER}"', unit)
+        self.assertIn(f'WorkingDirectory={CONTROLLER}\n', unit)
         self.assertNotIn('@ROOT@', unit)
         monitor = (self.installed / 'aeyes-monitor.service').read_text()
         self.assertIn(f'"{CONTROLLER}/monitoring/monitor.py" --host 127.0.0.1 --port 8080',
@@ -192,6 +222,33 @@ install() {
         self.assertEqual([line for line in result.stdout.splitlines() if line.startswith('SYSTEMCTL ')],
                          ['SYSTEMCTL daemon-reload', 'SYSTEMCTL enable --now shutdown.service'])
         self.assertNotIn('APT ', result.stdout)
+
+    @unittest.skipUnless(shutil.which('systemd-analyze'), 'systemd-analyze is not installed')
+    def test_generated_services_pass_systemd_verification(self):
+        for dirname in ('controller', 'controller with spaces %'):
+            with self.subTest(dirname=dirname):
+                source_root = self.root / dirname
+                shutil.copytree(CONTROLLER / 'deploy', source_root / 'deploy')
+                python = source_root / '.venv/bin/python'
+                python.parent.mkdir(parents=True)
+                python.symlink_to(shutil.which('python3'))
+                result = self.run_installer(
+                    self.select('install_application_services', 'install_shutdown_service'),
+                    real_components=('install_application_services', 'install_shutdown_service'),
+                    source_root=source_root)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+                # Isolate verification from the host's units and never start services.
+                for target in ('sysinit', 'basic', 'shutdown', 'multi-user'):
+                    (self.installed / f'{target}.target').write_text(
+                        '[Unit]\nDescription=Offline verification fixture\nDefaultDependencies=no\n')
+                units = [self.installed / name for name in
+                         ('main.service', 'aeyes-monitor.service', 'shutdown.service')]
+                check = subprocess.run(
+                    ['systemd-analyze', 'verify', '--generators=no', '--man=no', *map(str, units)],
+                    env={**os.environ, 'SYSTEMD_UNIT_PATH': str(self.installed)},
+                    text=True, capture_output=True, timeout=10)
+                self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
 
     def test_system_dependencies_do_not_install_or_configure_nginx(self):
         result = self.run_installer(self.select('install_system_dependencies'),
