@@ -7,7 +7,7 @@ tracker:
   base_max_distance: 0.4
   depth_scale_factor: 0.15
   embedding_weight: 0.3
-  min_hits_to_confirm: 30
+  min_hits_to_confirm: 20
   min_hits_to_confirm_reacquiring_tracks: 3
   max_missing_confirmed: 30
   max_missing_tentative: 5
@@ -18,7 +18,7 @@ tracker:
   static_window: 1000
   static_speed_thresh_mps: 0.15
   mahalanobis_gate: 11.345
-  min_detection_confidence: 0.80
+  min_detection_confidence: 0.8
   min_bbox_iou: 0.2
   depth_grace_s: 0.5
   coast_time_s: 0.25
@@ -49,7 +49,7 @@ eye_manager:
   - 184
   - 23
   - 23
-  vein_count: 8
+  vein_count: 5
   vein_seed: null
   iris_accent_hue_offset: 0.06
   iris_accent_lightness: 0.3
