@@ -89,7 +89,10 @@ class EyeManagerParams:
     color_out_rate: float = _described(
         "Controls how quickly eye colors return to the neutral palette after losing a face, with higher values fading faster.")
     blink_rate: float = _described(
-        "Sets the speed of the blink triggered by a new face assignment in complete blinks per second.")
+        "Sets the animation speed of assignment and periodic blinks in complete blinks per second.")
+    periodic_blink_mean_pause_s: float = _described(
+        "Sets the average open-eye pause in seconds between blinks while assigned to a face. "
+        "Each eye waits independently at random, allowing quick repeats and longer pauses; zero disables periodic blinks.")
     radius: float = _described(
         "Sets the outer rendered eye radius in shader coordinates independently of iris and pupil size.")
     curvature: float = _described(
@@ -166,7 +169,7 @@ class Params:
     })
     eye_manager: EyeManagerParams = field(metadata={
         "label": "Eye Manager",
-        "description": "Controls eye appearance, face-based color palettes, assignment blinks, and eyelid opening by target distance.",
+        "description": "Controls eye appearance, face-based color palettes, assignment and random periodic blinks, and eyelid opening by target distance.",
     })
 
 
@@ -229,6 +232,8 @@ def _validate(p: Params) -> None:
           "eye_manager.blink_rate must be positive")
 
     eye = p.eye_manager
+    check(math.isfinite(eye.periodic_blink_mean_pause_s) and eye.periodic_blink_mean_pause_s >= 0.0,
+          "eye_manager.periodic_blink_mean_pause_s must be finite and nonnegative")
     check(math.isfinite(eye.radius) and eye.radius > 0.0,
           "eye_manager.radius must be finite and positive")
     for name in (
