@@ -13,9 +13,10 @@ Components: system packages, Python dependencies, Node/Yarn and UI dependencies,
 dashboard build/deployment, OAK USB access, application services, GPIO shutdown
 service, nginx, and Ethernet (192.168.5.100/24).
 
-Python service startup remains manual. nginx is enabled and started/reloaded
-when selected. Ethernet changes run last and may interrupt an SSH connection
-over Ethernet.
+Selected services are enabled for boot and started; nginx is reloaded if already
+running. Install dependencies and configure OAK USB access before selecting
+application services. Starting the controller publishes commands to physical eyes.
+Ethernet changes run last and may interrupt an SSH connection over Ethernet.
 EOF
 }
 
@@ -188,9 +189,8 @@ PY
     install -m 0644 "$TASK_TMP/main.service" /etc/systemd/system/main.service
     install -m 0644 "$TASK_TMP/aeyes-monitor.service" /etc/systemd/system/aeyes-monitor.service
     systemctl daemon-reload
-    echo "Application services installed. Enable/start them when ready:"
-    echo "  sudo systemctl enable --now main.service aeyes-monitor.service"
-    echo "Install Python dependencies and configure OAK USB access before starting the controller."
+    systemctl enable --now main.service aeyes-monitor.service
+    echo "Application services enabled for boot and started."
 }
 
 install_shutdown_service() {
@@ -224,8 +224,8 @@ WantedBy=multi-user.target
 EOF
     install -m 0644 "$TASK_TMP/shutdown.service" /etc/systemd/system/shutdown.service
     systemctl daemon-reload
-    echo "Shutdown service installed. Enable/start it after installing Python dependencies:"
-    echo "  sudo systemctl enable --now shutdown.service"
+    systemctl enable --now shutdown.service
+    echo "Shutdown service enabled for boot and started."
 }
 
 configure_nginx() {
@@ -299,14 +299,15 @@ main() {
         [install_frontend_dependencies]="Install Node 24, Yarn 1.22.22 and dashboard dependencies"
         [deploy_dashboard]="Build the dashboard and deploy it to /var/www/aeyes"
         [configure_oak_usb]="Configure OAK camera USB access for non-root users"
-        [install_application_services]="Install controller/monitor services and the dashboard restart sudo rule"
-        [install_shutdown_service]="Install the GPIO shutdown-button service"
+        [install_application_services]="Install, enable and start controller/monitor services and install the dashboard restart sudo rule"
+        [install_shutdown_service]="Install, enable and start the GPIO shutdown-button service"
         [configure_nginx]="Install/configure and enable/start or reload nginx on port 80"
         [configure_ethernet]="Set Ethernet to 192.168.5.100/24 (may interrupt Ethernet SSH)"
     )
     local -a selected_steps=()
     if [ "$install_all" = false ]; then
-        echo "Choose components; skipped steps are left unchanged. Service installation does not start Python services."
+        echo "Choose components; skipped steps are left unchanged. Selected services are enabled for boot and started."
+        echo "Install dependencies and configure OAK USB access before selecting application services. Starting the controller publishes commands to physical eyes."
         echo "Ethernet changes may interrupt SSH and will run last."
         if confirm "Install/configure all components"; then
             install_all=true

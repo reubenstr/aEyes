@@ -86,10 +86,13 @@ install() {
     def test_declining_everything_and_default_answers_make_no_changes(self):
         for answers in (self.select(), '\n' * (len(COMPONENTS) + 1)):
             with self.subTest(answers=answers):
-                result = self.run_installer(answers)
+                result = self.run_installer(
+                    answers, real_components=('install_application_services', 'install_shutdown_service'))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.actions(result), [])
                 self.assertIn('Nothing changed', result.stdout)
+                self.assertNotIn('SYSTEMCTL ', result.stdout)
+                self.assertEqual(list(self.installed.iterdir()), [])
 
     def test_interactive_all_and_all_flag_run_every_component(self):
         for answers, args in (('yes\n', ()), ('', ('--all',))):
@@ -102,7 +105,27 @@ install() {
                                 actions.index('install_python_dependencies'))
                 self.assertLess(actions.index('install_frontend_dependencies'),
                                 actions.index('deploy_dashboard'))
+                self.assertLess(actions.index('install_python_dependencies'),
+                                actions.index('install_application_services'))
+                self.assertLess(actions.index('configure_oak_usb'),
+                                actions.index('install_application_services'))
+                self.assertLess(actions.index('install_python_dependencies'),
+                                actions.index('install_shutdown_service'))
                 self.assertEqual(actions[-1], 'configure_ethernet')
+
+    def test_all_options_enable_and_start_python_services(self):
+        for answers, args in (('yes\n', ()), ('', ('--all',))):
+            with self.subTest(args=args):
+                result = self.run_installer(
+                    answers, args,
+                    real_components=('install_application_services', 'install_shutdown_service'))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    [line for line in result.stdout.splitlines() if line.startswith('SYSTEMCTL ')],
+                    ['SYSTEMCTL daemon-reload',
+                     'SYSTEMCTL enable --now main.service aeyes-monitor.service',
+                     'SYSTEMCTL daemon-reload',
+                     'SYSTEMCTL enable --now shutdown.service'])
 
     def test_eof_cancels_before_any_selected_actions_run(self):
         for answers in ('', 'n\ny\n'):
@@ -137,7 +160,7 @@ install() {
         self.assertNotIn('APT ', result.stdout)
         self.assertNotIn('SYSTEMCTL ', result.stdout)
 
-    def test_application_service_installation_renders_units_without_dependencies_or_startup(self):
+    def test_application_service_installation_renders_units_and_enables_and_starts_them(self):
         result = self.run_installer(self.select('install_application_services'),
                                     real_components=('install_application_services',))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -154,11 +177,12 @@ install() {
         self.assertIn('VISUDO -cf ', result.stdout)
         self.assertIn('INSTALL -m 0440 ', result.stdout)
         self.assertEqual([line for line in result.stdout.splitlines() if line.startswith('SYSTEMCTL ')],
-                         ['SYSTEMCTL daemon-reload'])
+                         ['SYSTEMCTL daemon-reload',
+                          'SYSTEMCTL enable --now main.service aeyes-monitor.service'])
         self.assertNotIn('APT ', result.stdout)
         self.assertFalse(any(line.startswith('SUDO ') for line in result.stdout.splitlines()))
 
-    def test_shutdown_service_installation_does_not_enable_or_restart_it(self):
+    def test_shutdown_service_installation_enables_and_starts_it(self):
         result = self.run_installer(self.select('install_shutdown_service'),
                                     real_components=('install_shutdown_service',))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -166,7 +190,7 @@ install() {
         self.assertIn(f'ExecStart="{CONTROLLER}/.venv/bin/python"', unit)
         self.assertIn(f'Environment="XAUTHORITY={self.root}/home/test/.Xauthority"', unit)
         self.assertEqual([line for line in result.stdout.splitlines() if line.startswith('SYSTEMCTL ')],
-                         ['SYSTEMCTL daemon-reload'])
+                         ['SYSTEMCTL daemon-reload', 'SYSTEMCTL enable --now shutdown.service'])
         self.assertNotIn('APT ', result.stdout)
 
     def test_system_dependencies_do_not_install_or_configure_nginx(self):
