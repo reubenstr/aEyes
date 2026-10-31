@@ -164,6 +164,15 @@ class MotorControlTests(unittest.TestCase):
         collection.motors = {name: Mock(allow_motion=True) for name in ('BASE', 'EYE')}
         return collection
 
+    def feedback_collection(self):
+        collection = self.collection()
+        for name in self.eye_module.MOTOR_NAMES:
+            config = self.eye_module.get_motor_info(name)
+            collection.motors[name] = self.motor_module.Motor(
+                name, config.id, config.min_position, config.max_position,
+                False, True, True, 'fake', Mock())
+        return collection
+
     def test_partial_enable_failure_rolls_back_every_motor_and_releases_lock(self):
         collection = self.collection()
         collection.motors['BASE'].cmd_motor_on.return_value = True
@@ -220,26 +229,46 @@ class MotorControlTests(unittest.TestCase):
             self.assertEqual(motor.position_sample_time, 12.3)
 
     def test_home_offsets_update_feedback_and_zero_targets_together(self):
-        collection = self.collection()
+        collection = self.feedback_collection()
         for motor in collection.motors.values():
             motor.raw_position_degrees = 10.
+            motor.position_sample_time = 12.3
         collection.apply_home_offsets({'BASE': 57.5, 'EYE': 35.}, 300)
         self.assertEqual(collection.motors['BASE'].position_degrees, 67.5)
+        self.assertEqual(collection.get_position_sample('BASE'), (10., 67.5, 12.3))
+        self.assertEqual(collection.get_position_sample('EYE'), (10., 45., 12.3))
         self.assertEqual(collection.target_positions, {'BASE': 0., 'EYE': 0.})
         self.assertEqual(collection.target_speeds, {'BASE': 300, 'EYE': 300})
 
     def test_mount_inversion_updates_cached_position_and_hold_target(self):
-        collection = self.collection()
+        collection = self.feedback_collection()
         motor = collection.motors['BASE']
         motor.can_channel = 'fake'
         motor.inverse_rotation = True
         motor.raw_position_degrees = 10.
         motor.position_offset = 5.
+        motor.position_sample_time = 12.3
         collection.target_speeds['BASE'] = 300
         collection.set_inversion_rotation('BASE', False)
         self.assertEqual(motor.raw_position_degrees, -10.)
         self.assertEqual(motor.position_degrees, -5.)
+        self.assertEqual(collection.get_position_sample('BASE'), (-10., -5., 12.3))
         self.assertEqual(collection.target_positions['BASE'], -5.)
+
+    def test_cached_position_feedback_does_not_wait_for_can_transaction_lock(self):
+        collection = self.feedback_collection()
+        motor = collection.motors['BASE']
+        motor.raw_position_degrees = 30.
+        motor.position_degrees = 32.
+        motor.position_sample_time = 12.3
+        with patch.object(collection.can_infos['fake'], 'lock') as bus_lock:
+            bus_lock.__enter__.side_effect = AssertionError('Feedback read waited for CAN')
+            self.assertEqual(collection.get_position_sample('BASE'), (30., 32., 12.3))
+            motor.under_voltage_protection = True
+            self.assertIsNone(collection.get_position_sample('BASE'))
+            motor.under_voltage_protection = False
+            motor.position_sample_time = None
+            self.assertIsNone(collection.get_position_sample('BASE'))
 
     def assert_motion_bounds(self, before, after, dt, profile):
         limits = profile.limits
@@ -325,6 +354,8 @@ class MotorControlTests(unittest.TestCase):
 
     def test_motion_brakes_at_feedback_lead_limit_without_repeated_fault_holds(self):
         eye = self.eye()
+        for config in eye._motor_configs.values():
+            config.motion.max_following_error_deg = 5.
         eye.motors = SimpleNamespace(set_motor_targets=Mock())
         self.assertEqual(self.motion_tick(eye, 10., (10., -10.)), '')
         self.assertEqual((eye.commanded_yaw, eye.commanded_pitch), (10., -10.))
@@ -341,6 +372,8 @@ class MotorControlTests(unittest.TestCase):
 
     def test_large_feedback_jump_still_holds_until_motor_catches_up(self):
         eye = self.eye()
+        for config in eye._motor_configs.values():
+            config.motion.max_following_error_deg = 5.
         eye.motors = SimpleNamespace(set_motor_targets=Mock())
         self.motion_tick(eye, 10., (0., 0.))
         for tick in range(100):
@@ -426,11 +459,13 @@ class MotorControlTests(unittest.TestCase):
 
     def test_slow_motor_tracks_large_move_without_periodic_fault_resets(self):
         eye = self.eye()
+        for config in eye._motor_configs.values():
+            config.motion.max_following_error_deg = 5.
         eye.motors = SimpleNamespace(set_motor_targets=Mock())
         measured = 0.
         self.motion_tick(eye, 10., (measured, 0.), targets=(40., 0.))
         for tick in range(1, 1001):
-            # A motor limited to 15 deg/s cannot follow the 45 deg/s yaw profile.
+            # A motor limited to 15 deg/s cannot follow the faster yaw profile.
             measured += max(-15. * .005, min(15. * .005, eye.commanded_yaw - measured))
             previous = eye.commanded_yaw
             status = self.motion_tick(eye, 10. + tick * .005,
@@ -445,6 +480,8 @@ class MotorControlTests(unittest.TestCase):
     def test_yaw_large_step_finishes_at_speed_and_acceleration_limits(self):
         eye = self.eye()
         profile = eye._motion[self.MotorName.BASE]
+        profile.limits.max_speed_deg_s = 45.
+        profile.limits.max_acceleration_deg_s2 = 90.
         # 45 degrees at 45 deg/s and 90 deg/s^2 takes 1.5 s, with no curve delay.
         for _ in range(299):
             profile.advance(45., .005)
@@ -475,8 +512,10 @@ class MotorControlTests(unittest.TestCase):
         self.assert_motion_bounds(before, after, .005, profile)
 
     def test_stale_missing_nonfinite_or_outside_limit_feedback_holds_last_target(self):
+        config = self.eye()._motor_configs[self.MotorName.BASE]
+        too_far = config.max_position + config.motion.max_following_error_deg + 1.
         for bad_sample in (None, (0., 0., 9.), (0., 0., 11.),
-                           (0., math.nan, 10.), (0., 46., 10.)):
+                           (0., math.nan, 10.), (0., too_far, 10.)):
             eye = self.eye()
             eye.motors = SimpleNamespace(set_motor_targets=Mock())
             self.motion_tick(eye, 9.99, (0., 0.))
@@ -490,6 +529,63 @@ class MotorControlTests(unittest.TestCase):
             self.motion_tick(eye, 11., (1., 0.))
             self.assertEqual(eye.commanded_yaw, 1.)
             self.assertEqual(eye._motion[self.MotorName.BASE].state.velocity, 0.)
+
+    def test_limit_overshoot_recovers_inward_to_idle_with_bounded_commands(self):
+        targets = (0., -22.5)
+        for name in self.eye_module.MOTOR_NAMES:
+            for direction in (-1., 1.):
+                for ready in (False, True):
+                    with self.subTest(axis=name, direction=direction, ready=ready):
+                        eye = self.eye()
+                        eye.motors = SimpleNamespace(set_motor_targets=Mock())
+                        config = eye._motor_configs[name]
+                        boundary = config.min_position if direction < 0 else config.max_position
+                        measured = {axis: 0. for axis in self.eye_module.MOTOR_NAMES}
+                        measured[name] = boundary
+                        if ready:
+                            self.motion_tick(eye, 9.99, tuple(measured.values()),
+                                             targets=tuple(measured.values()))
+                        measured[name] = boundary + direction * .001
+                        for tick in range(1201):
+                            status = self.motion_tick(eye, 10. + tick * .005,
+                                                      tuple(measured.values()), targets=targets)
+                            self.assertEqual(status, '')
+                            commands = (eye.commanded_yaw, eye.commanded_pitch)
+                            for axis, commanded in zip(self.eye_module.MOTOR_NAMES, commands):
+                                limits = eye._motor_configs[axis]
+                                self.assertGreaterEqual(commanded, limits.min_position)
+                                self.assertLessEqual(commanded, limits.max_position)
+                                if axis != name or (commanded - boundary) * direction < 0:
+                                    measured[axis] = commanded
+                            if tick == 1:
+                                self.assertLess((eye._motion[name].state.position - boundary) * direction, 0.)
+                        self.assertEqual((eye.commanded_yaw, eye.commanded_pitch), targets)
+
+    def test_outside_feedback_requires_bounded_inward_target_and_fresh_sample(self):
+        eye = self.eye()
+        for name, config in eye._motor_configs.items():
+            for direction in (-1., 1.):
+                boundary = config.min_position if direction < 0 else config.max_position
+                position = boundary + direction * .001
+                sample = (position, position, 10.)
+                with self.subTest(axis=name, direction=direction):
+                    self.assertEqual(eye._feedback_position(name, sample, 10., target=0.), position)
+                    for target in (None, boundary, position, math.nan):
+                        self.assertIsNone(eye._feedback_position(name, sample, 10., target=target))
+                    self.assertIsNone(eye._feedback_position(name, sample, 11., target=0.))
+                    too_far = boundary + direction * (config.motion.max_following_error_deg + 1.)
+                    self.assertIsNone(eye._feedback_position(name, (too_far, too_far, 10.), 10., target=0.))
+
+    def test_post_homing_initialization_rejects_even_small_limit_overshoot(self):
+        eye = self.eye()
+        for name, config in eye._motor_configs.items():
+            with self.subTest(axis=name):
+                position = config.max_position + .001
+                eye.motors = SimpleNamespace(get_position_sample=lambda axis:
+                    (position, position, 10.) if axis == name else (0., 0., 10.))
+                with patch.object(self.eye_module, 'monotonic', return_value=10.):
+                    with self.assertRaisesRegex(RuntimeError, 'Missing/stale/out-of-range feedback'):
+                        eye._initialize_motion_from_feedback()
 
     def test_post_homing_motion_initialization_uses_adjusted_feedback(self):
         eye = self.eye()

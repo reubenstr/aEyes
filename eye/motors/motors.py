@@ -254,7 +254,7 @@ class Motors:
     def get_position_sample(self, motor_name: str):
         """Atomic (inverted raw degrees, adjusted degrees, monotonic receive time)."""
         motor = self.motors[motor_name]
-        with self.can_infos[motor.can_channel].lock:
+        with motor.feedback_lock:
             if motor.position_sample_time is None or motor.is_error():
                 return None
             return motor.raw_position_degrees, motor.position_degrees, motor.position_sample_time
@@ -270,7 +270,6 @@ class Motors:
             for name, offset in offsets.items():
                 motor = self.motors[name]
                 motor.set_position_offset(offset)
-                motor.position_degrees = motor.raw_position_degrees + offset
                 motor.enforce_position_limits = True
                 self.set_motor_targets(name, speed, 0.)
         finally:
@@ -290,10 +289,12 @@ class Motors:
             motor = self.motors[motor_name]
             with self.can_infos[motor.can_channel].lock:
                 if motor.inverse_rotation != inverted:
-                    motor.inverse_rotation = inverted
-                    motor.raw_position_degrees *= -1
-                    motor.position_degrees = motor.raw_position_degrees + motor.position_offset
-                    self.set_motor_targets(motor_name, self.target_speeds[motor_name], motor.position_degrees)
+                    with motor.feedback_lock:
+                        motor.inverse_rotation = inverted
+                        motor.raw_position_degrees *= -1
+                        motor.position_degrees = motor.raw_position_degrees + motor.position_offset
+                        position = motor.position_degrees
+                    self.set_motor_targets(motor_name, self.target_speeds[motor_name], position)
                 
     def is_can_error(self) -> bool:
         for can_info in self.can_infos.values():

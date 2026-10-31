@@ -101,13 +101,23 @@ class Eye:
         """Advance an axis without resetting its velocity when its goal changes."""
         return self._motion[motor_name].advance(target, dt).position
 
-    def _feedback_position(self, name, sample, now):
+    def _feedback_position(self, name, sample, now, target=None):
         config = self._motor_configs[name]
         if (sample is None or not all(math.isfinite(value) for value in sample)
-                or not 0.0 <= now - sample[2] <= config.motion.feedback_timeout_s
-                or not config.min_position <= sample[1] <= config.max_position):
+                or not 0.0 <= now - sample[2] <= config.motion.feedback_timeout_s):
             return None
-        return sample[1]
+        position = sample[1]
+        boundary = max(config.min_position, min(config.max_position, position))
+        if position == boundary:
+            return position
+        # Startup still requires feedback inside the configured limits.
+        # Runtime overshoot may recover inward within the existing error limit.
+        if (target is None or not math.isfinite(target)
+                or not config.min_position <= target <= config.max_position
+                or abs(position - boundary) > config.motion.max_following_error_deg
+                or (target - boundary) * (position - boundary) >= 0.0):
+            return None
+        return position  # Keep the actual measurement for following-error checks.
 
     def _set_commanded_position(self, name, position):
         if name == MotorName.BASE:
@@ -144,7 +154,7 @@ class Eye:
         for name, target in zip(MOTOR_NAMES, targets):
             profile = self._motion[name]
             limits = self._motor_configs[name].motion
-            position = self._feedback_position(name, samples.get(name), now)
+            position = self._feedback_position(name, samples.get(name), now, target=target)
             if position is None:
                 self._motion_ready[name] = False
                 issues.append(f"{name}: motion paused (missing/stale/out-of-range feedback)")
@@ -161,9 +171,10 @@ class Eye:
                     continue
                 del self._lag_holds[name]
             if not self._motion_ready[name]:
-                profile.reset(position)
+                # Seed inside the trajectory bounds even during inward recovery.
+                profile.reset(max(profile.minimum, min(profile.maximum, position)))
                 self._motion_ready[name] = True
-                commanded = position  # Seed only; start the new trajectory next tick.
+                commanded = profile.state.position  # Start moving next tick.
             else:
                 previous = profile.state.position
                 # Brake toward the lead boundary before triggering a fault hold.

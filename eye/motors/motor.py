@@ -1,5 +1,6 @@
 import os
 from time import monotonic
+from threading import Lock
 import can
 from rich import print
 from can.interface import Bus
@@ -78,6 +79,7 @@ class Motor:
         self.raw_position_degrees: float = 0
         self.position_degrees: float = 0
         self.position_sample_time: float | None = None
+        self.feedback_lock = Lock()  # Protect cached values, never CAN operations.
 
         # Motor fault states (from motor driver):
         self.under_voltage_protection: bool = False
@@ -304,9 +306,10 @@ class Motor:
                       
 
                 inverse_pos = -raw_pos if self.inverse_rotation else raw_pos    
-                self.raw_position_degrees = inverse_pos                
-                self.position_degrees = inverse_pos + self.position_offset           
-                self.position_sample_time = monotonic()
+                with self.feedback_lock:
+                    self.raw_position_degrees = inverse_pos
+                    self.position_degrees = inverse_pos + self.position_offset
+                    self.position_sample_time = monotonic()
               
                 if self.prints_enabled:
                     print(f"{self.tag }[M{reply_motor_id}] req_motor_multi_angle reply, position: {self.position_degrees} degrees")
@@ -319,7 +322,9 @@ class Motor:
         return self.enabled
 
     def set_position_offset(self, value: float):
-        self.position_offset = value
+        with self.feedback_lock:
+            self.position_offset = value
+            self.position_degrees = self.raw_position_degrees + value
 
     def is_error(self) -> bool:
         return self.is_hardware_error() or self.is_comms_error()
