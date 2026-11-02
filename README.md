@@ -2,7 +2,7 @@
 
 aEyes is a robotic art project adding physicality to the ubiquitous surveillance apparatus that we walk beneath daily.
 
-![Electronics bay](images/aEyes-front-full-side.jpg)
+![aEyes Front Upclose](images/aEyes-front-side.jpg)
 
 <table>
   <tr>
