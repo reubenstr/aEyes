@@ -19,6 +19,7 @@ SOCKET_PORT = 9000
 MESSAGE_TIMEOUT_SECONDS = 3.0
 MAX_MOTION_STEP_SECONDS = 0.1
 MOTOR_NAMES = (MotorName.BASE, MotorName.EYE)
+HOMING_TIMEOUT_S = 10.0
 
 class Eye:
     def __init__(self):
@@ -228,7 +229,7 @@ class Eye:
                 direction = -1 if name == MotorName.BASE and BASE_HOME_INVERSION[self.eye_id] else 1
                 motors.set_enforce_position_limits(name, False)
                 motors.set_motor_targets(name, MotorSpeeds.SLOW, samples[name][1] + direction * 180.)
-            deadline = monotonic() + 5.
+            deadline = monotonic() + HOMING_TIMEOUT_S
             sleep(0.5)
             while monotonic() < deadline:
                 if self.exit_event.is_set():

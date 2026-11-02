@@ -1,19 +1,23 @@
 # aEyes
 
-aEyes is a robotic face tracker with a set of six eyes tracking faces as they traverse the scene.
+aEyes is a robotic art project adding physicality to the ubiquitous surveillance apparatus that we walk beneath daily.
 
-** Work in progress **
+![Electronics bay](images/aEyes-front-full-side.jpg)
 
-![Front render](images/aEyes-front-render.png)
+<table>
+  <tr>
+    <td><img src="images/aEyes-front-full.jpg" width="45%"></td>
+  </tr>
+</table>
 
-# Simulation
 
-Run `main.py --demo` from `controller/` to generate face positions moving through
-3D space, disappearing, reappearing, or staying static. Demo mode uses the same
-tracking, assignment, and publication pipeline as the live camera and sends
-commands to physical eyes. The web dashboard visualizes the results; no camera or
-desktop display is required. See the [controller development guide](controller/README.md#dashboard-development-with-the-simulation)
-for startup instructions.
+# Overview
+
+The stereo depth camera, with onboard neural processing, detects faces and their relative positions, then feeds the data into a tracking and assignment pipeline that controls the positioning of the eyes. Eye assignments are distributed to the six nearest faces.
+
+# UI
+
+**TODO**
 
 # Pipeline
 
@@ -33,29 +37,41 @@ The system is split into two subsystems: a **Controller** and **6 Eye units**, a
 # Hardware
 
 **Controller**
-- Raspberry Pi 5
-- OAK-D depth camera (USB)
+- Raspberry Pi 4 (or 5)
+- OAK-D W depth camera (USB)
 - Mean Well LRS-100-24 AC/DC PSU (24V)
 - DC-DC converter 24V → 12V
+- DC-DC converter 24V → 5V
 - 8-port Ethernet switch
 
 **Eye units (×6)**
 - Raspberry Pi 4B
 - Waveshare 4" DSI LCD
 - Waveshare RS485/CAN Hat
-- DC-DC converter hat 24V → 5V
+- DC-DC converter 24V → 5V
 - 1× MG4010E-i10v3 CAN servo motor (yaw)
 - 1× MG4005-v2 CAN servo motor (pitch)
 
-![Electronics bay](images/aEyes-electronics-bay-render.png)
+![Electronics bay](images/aEyes-base-electronics.jpg)
 
-# Setup
-
-There are several README's through out the repository for indivdual systems:
+# Installation / Setup / Execution
 
 - [Controller](controller/README.md)
-- [Eye](eye/README.md)
-- [Extra Docs](docs/README.md)
+- [Eyes](eye/README.md)
+- [Mechanical Notes](docs/MECHANICAL.md)
+- [Misc Docs](docs/README.md)
+
+
+# 3D CAD
+
+aEyes was created in CAD using [OnShape](https://cad.onshape.com). The full assembly may be viewed/exported with this link: [aEyes CAD Assembly](https://cad.onshape.com/documents/3d927fbbde33024eb0f3feca/w/105fa9c43462d4971ca0f096/e/2fabb45a1dca49857035ca55)
+
+<table>
+  <tr>
+    <td><img src="images/aEyes-front-render.png" width="400"></td>
+    <td><img src="images/aEyes-electronics-bay-render.png" width="400"></td>
+  </tr>
+</table>
 
 # AI Disclosure
 

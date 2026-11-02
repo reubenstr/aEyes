@@ -115,7 +115,6 @@ class Detector:
         stereo.setLeftRightCheck(True)
         stereo.setSubpixel(True)
         stereo.initialConfig.postProcessing.thresholdFilter.maxRange = DEPTH_UPPER_THRESHOLD_MM
-
         nn_with_parser = pipeline.create(ParsingNeuralNetwork).build(
             rgb_out,
             nn_archive,
